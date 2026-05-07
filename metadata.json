@@ -1,0 +1,25 @@
+{
+  "name": "ffquintella-bastionvault",
+  "version": "0.2.0",
+  "author": "Felipe Quintella",
+  "summary": "Install and run BastionVault server rootlessly via Podman Quadlet on EL9/EL10.",
+  "description": "Puppet module to install and configure the BastionVault server (Vault-API compatible secrets manager) using rootless Podman with SELinux enforcing and systemd cgroups v2 limits. Supports single-node and HA (hiqlite Raft) topologies. Initialization and unseal are intentionally out of scope and remain a manual operator task.",
+  "license": "Apache-2.0",
+  "source": "https://github.com/ffquintella/puppet-bastionvault",
+  "project_page": "https://github.com/ffquintella/puppet-bastionvault",
+  "issues_url": "https://github.com/ffquintella/puppet-bastionvault/issues",
+  "dependencies": [
+    { "name": "puppetlabs/stdlib", "version_requirement": ">= 9.0.0 < 10.0.0" },
+    { "name": "puppet/selinux",   "version_requirement": ">= 4.0.0 < 6.0.0" },
+    { "name": "puppet/systemd",   "version_requirement": ">= 7.0.0 < 9.0.0" }
+  ],
+  "operatingsystem_support": [
+    { "operatingsystem": "RedHat",     "operatingsystemrelease": ["9", "10"] },
+    { "operatingsystem": "Rocky",      "operatingsystemrelease": ["9", "10"] },
+    { "operatingsystem": "AlmaLinux",  "operatingsystemrelease": ["9", "10"] }
+  ],
+  "requirements": [
+    { "name": "puppet", "version_requirement": ">= 8.0.0 < 9.0.0" }
+  ],
+  "tags": ["bastionvault", "vault", "secrets", "podman", "rootless", "selinux", "el9", "el10"]
+}

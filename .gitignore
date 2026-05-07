@@ -1,0 +1,46 @@
+# Bundler / Ruby gems
+vendor/
+.bundle/
+Gemfile.lock
+*.gem
+
+# Forge modules pulled by .fixtures.yml
+spec/fixtures/modules/*
+!spec/fixtures/modules/.gitkeep
+
+# Build / package artifacts
+pkg/
+build/
+dist/
+
+# Test & coverage
+coverage/
+coverage_html/
+.rspec
+.rubocop_cache
+junit.xml
+
+# Regent / Artichoke runtime
+.regent/
+target/
+
+# Caches & temp
+.cache/
+.tmp/
+tmp/
+*.tmp
+*.swp
+*.swo
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.sublime-*
+*~
+
+# Local Puppet/Beaker state
+.beaker/
+.beaker_history
+.puppet/

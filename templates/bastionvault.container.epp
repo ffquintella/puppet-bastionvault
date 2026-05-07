@@ -1,0 +1,26 @@
+<%- |
+| -%>
+[Unit]
+Description=BastionVault server (rootless, managed by Puppet)
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+Image=<%= $bastionvault::image_ref %>
+ContainerName=bastionvault
+PublishPort=<%= $bastionvault::listen_port %>:<%= $bastionvault::container_port %>
+<%- if $bastionvault::mode == 'ha' { -%>
+PublishPort=<%= $bastionvault::raft_port %>:<%= $bastionvault::raft_port %>
+PublishPort=<%= $bastionvault::internal_api_port %>:<%= $bastionvault::internal_api_port %>
+<%- } -%>
+Volume=<%= $bastionvault::config_dir %>/config.hcl:/etc/bvault/config.hcl:ro,Z
+Volume=<%= $bastionvault::tls_dir %>:/etc/bvault/tls:ro,Z
+Volume=<%= $bastionvault::data_dir %>:/var/lib/bvault/data:Z
+Environment=RUST_LOG=<%= $bastionvault::log_level %>
+
+[Service]
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

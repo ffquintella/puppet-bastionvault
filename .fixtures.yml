@@ -1,0 +1,14 @@
+---
+fixtures:
+  forge_modules:
+    stdlib:
+      repo: 'puppetlabs/stdlib'
+      ref:  '9.6.0'
+    selinux:
+      repo: 'puppet/selinux'
+      ref:  '5.0.0'
+    systemd:
+      repo: 'puppet/systemd'
+      ref:  '8.1.0'
+  symlinks:
+    bastionvault: "#{source_dir}"

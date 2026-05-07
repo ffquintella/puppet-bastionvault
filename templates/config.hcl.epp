@@ -1,0 +1,51 @@
+<%- |
+| -%>
+<%- # BastionVault config.hcl — rendered by Puppet. Mirrors the schema in
+    # ../BastionVault/config/{single-node,ha-cluster}.hcl exactly.
+-%>
+storage "hiqlite" {
+  data_dir    = "/var/lib/bvault/data"
+  node_id     = <%= $bastionvault::node_id %>
+  secret_raft = "<%= $bastionvault::secret_raft.unwrap %>"
+  secret_api  = "<%= $bastionvault::secret_api.unwrap %>"
+<%- if $bastionvault::mode == 'ha' { -%>
+  listen_addr_api  = "<%= $bastionvault::raft_listen_addr %>:<%= $bastionvault::internal_api_port %>"
+  listen_addr_raft = "<%= $bastionvault::raft_listen_addr %>:<%= $bastionvault::raft_port %>"
+  nodes            = [
+<%-   $bastionvault::nodes.each |$n| { -%>
+    "<%= $n['id'] %>:<%= $n['raft_host'] %>:<%= $n['raft_port'] %>:<%= $n['api_host'] %>:<%= $n['api_port'] %>",
+<%-   } -%>
+  ]
+<%-   if $bastionvault::cluster_tls_raft_disable { -%>
+  tls_raft_disable = true
+<%-   } else { -%>
+<%-     if $bastionvault::cluster_tls_raft_cert { -%>
+  tls_raft_cert = "<%= $bastionvault::cluster_tls_raft_cert %>"
+<%-     } -%>
+<%-     if $bastionvault::cluster_tls_raft_key { -%>
+  tls_raft_key  = "<%= $bastionvault::cluster_tls_raft_key %>"
+<%-     } -%>
+<%-   } -%>
+<%-   if $bastionvault::cluster_tls_api_disable { -%>
+  tls_api_disable = true
+<%-   } else { -%>
+<%-     if $bastionvault::cluster_tls_api_cert { -%>
+  tls_api_cert = "<%= $bastionvault::cluster_tls_api_cert %>"
+<%-     } -%>
+<%-     if $bastionvault::cluster_tls_api_key { -%>
+  tls_api_key  = "<%= $bastionvault::cluster_tls_api_key %>"
+<%-     } -%>
+<%-   } -%>
+<%- } -%>
+}
+
+listener "tcp" {
+  address       = "<%= $bastionvault::listen_address %>:<%= $bastionvault::container_port %>"
+  tls_disable   = <%= $bastionvault::tls_disable %>
+  tls_cert_file = "/etc/bvault/tls/server.crt"
+  tls_key_file  = "/etc/bvault/tls/server.key"
+}
+
+api_addr  = "<%= $bastionvault::api_addr_effective %>"
+log_level = "<%= $bastionvault::log_level %>"
+pid_file  = "<%= $bastionvault::pid_file %>"

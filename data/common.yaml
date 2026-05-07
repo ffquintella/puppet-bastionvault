@@ -1,0 +1,38 @@
+---
+bastionvault::registry: 'docker.io'
+bastionvault::image_account: ''
+bastionvault::image_name: 'bastionvault'
+bastionvault::image_tag: '0.3.2'
+
+bastionvault::listen_port: 4200
+bastionvault::container_port: 8200
+bastionvault::listen_address: '0.0.0.0'
+bastionvault::tls_disable: false
+
+bastionvault::data_dir: '/var/lib/bastionvault/data'
+bastionvault::config_dir: '/etc/bastionvault'
+bastionvault::tls_dir: '/etc/bastionvault/tls'
+
+bastionvault::user: 'bastionvault'
+bastionvault::group: 'bastionvault'
+
+bastionvault::memory_max: '2G'
+bastionvault::cpu_quota: '200%'
+bastionvault::tasks_max: 4096
+bastionvault::io_weight: 100
+
+bastionvault::log_level: 'info'
+
+bastionvault::mode: 'single'
+bastionvault::node_id: 1
+bastionvault::raft_listen_addr: '0.0.0.0'
+bastionvault::raft_port: 8210
+bastionvault::internal_api_port: 8220
+
+bastionvault::cluster_tls_raft_disable: false
+bastionvault::cluster_tls_api_disable: false
+
+bastionvault::pid_file: '/var/run/bvault.pid'
+
+bastionvault::manage_selinux: true
+bastionvault::manage_firewall: false

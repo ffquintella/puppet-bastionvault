@@ -1,0 +1,10 @@
+<%- | String $memory_max,
+       String $cpu_quota,
+       Integer $tasks_max,
+       Integer $io_weight,
+| -%>
+[Slice]
+MemoryMax=<%= $memory_max %>
+CPUQuota=<%= $cpu_quota %>
+TasksMax=<%= $tasks_max %>
+IOWeight=<%= $io_weight %>
