@@ -25,6 +25,17 @@ class bastionvault::service {
     # account's shell is /sbin/nologin, which would refuse the login.
     $runas = "/usr/bin/sudo -u ${user} /usr/bin/env XDG_RUNTIME_DIR=/run/user/${_uid}"
 
+    # Apply subid changes to podman's storage. Required after writing
+    # /etc/subuid and /etc/subgid for the first time, otherwise the rootless
+    # user namespace is built with the old (empty) mapping and image pulls
+    # fail with "potentially insufficient UIDs or GIDs available". Idempotent
+    # via a flag file under the user's home.
+    $_migrate_flag = "${home}/.podman-subid-migrated"
+    exec { 'bastionvault-podman-migrate':
+      command => "${runas} /bin/sh -c '/usr/bin/podman system migrate && /usr/bin/touch ${_migrate_flag}'",
+      creates => $_migrate_flag,
+    }
+
     file { $unit_path:
       ensure  => file,
       owner   => $user,
@@ -52,7 +63,11 @@ class bastionvault::service {
     exec { 'bastionvault-user-start':
       command => "${runas} /usr/bin/systemctl --user start bastionvault.service",
       unless  => "${runas} /usr/bin/systemctl --user is-active bastionvault.service",
-      require => [File[$unit_path], Exec['bastionvault-user-daemon-reload']],
+      require => [
+        File[$unit_path],
+        Exec['bastionvault-user-daemon-reload'],
+        Exec['bastionvault-podman-migrate'],
+      ],
     }
   }
 

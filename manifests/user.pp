@@ -77,4 +77,22 @@ class bastionvault::user {
     unless  => "/usr/bin/loginctl show-user ${user} 2>/dev/null | grep -q '^Linger=yes$'",
     require => User[$user],
   }
+
+  # Subordinate UID/GID ranges. System users are NOT auto-allocated subids by
+  # useradd, but rootless podman requires them to set up the user namespace.
+  # We append a single line to /etc/subuid and /etc/subgid; podman picks the
+  # change up on the next `podman system migrate` (handled in service.pp).
+  $_subid_line = "${user}:${bastionvault::subid_start}:${bastionvault::subid_count}"
+
+  exec { "bastionvault-subuid-${user}":
+    command => "/bin/sh -c \"printf '%s\\n' '${_subid_line}' >> /etc/subuid\"",
+    unless  => "/bin/grep -q '^${user}:' /etc/subuid",
+    require => User[$user],
+  }
+
+  exec { "bastionvault-subgid-${user}":
+    command => "/bin/sh -c \"printf '%s\\n' '${_subid_line}' >> /etc/subgid\"",
+    unless  => "/bin/grep -q '^${user}:' /etc/subgid",
+    require => User[$user],
+  }
 }
