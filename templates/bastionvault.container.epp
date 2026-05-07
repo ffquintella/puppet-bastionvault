@@ -8,6 +8,10 @@ After=network-online.target
 [Container]
 Image=<%= $bastionvault::image_ref %>
 ContainerName=bastionvault
+# Map the in-container runtime UID/GID to the host's bastionvault user so the
+# bind-mounted config and data directories (owned by bastionvault on the host)
+# are readable/writable from inside the container.
+UserNS=keep-id:uid=<%= $bastionvault::container_uid %>,gid=<%= $bastionvault::container_gid %>
 PublishPort=<%= $bastionvault::listen_port %>:<%= $bastionvault::container_port %>
 <%- if $bastionvault::mode == 'ha' { -%>
 PublishPort=<%= $bastionvault::raft_port %>:<%= $bastionvault::raft_port %>

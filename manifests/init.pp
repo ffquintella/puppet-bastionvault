@@ -24,6 +24,8 @@
 # @param gid             Optional fixed GID.
 # @param subid_start     First subordinate UID/GID for the rootless namespace.
 # @param subid_count     Size of the subordinate UID/GID range (>=65536).
+# @param container_uid   UID the bvault process runs as inside the image.
+# @param container_gid   GID the bvault process runs as inside the image.
 # @param memory_max      systemd MemoryMax for the user slice drop-in.
 # @param cpu_quota       systemd CPUQuota for the user slice drop-in.
 # @param tasks_max       systemd TasksMax for the user slice drop-in.
@@ -75,6 +77,9 @@ class bastionvault (
 
   Integer[1000]                                $subid_start     = 1000000,
   Integer[65536]                               $subid_count     = 65536,
+
+  Integer[0]                                   $container_uid   = 65532,
+  Integer[0]                                   $container_gid   = 65532,
 
   String[1]                                    $memory_max      = '2G',
   String[1]                                    $cpu_quota       = '200%',
