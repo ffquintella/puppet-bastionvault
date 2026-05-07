@@ -10,7 +10,6 @@ Requires=user@<%= $uid %>.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/bin/systemctl --machine=<%= $user %>@.host --user start bastionvault.service
-ExecStartPost=/usr/bin/systemctl --machine=<%= $user %>@.host --user is-active bastionvault.service
 ExecStop=/usr/bin/systemctl --machine=<%= $user %>@.host --user stop bastionvault.service
 ExecReload=/usr/bin/systemctl --machine=<%= $user %>@.host --user reload-or-restart bastionvault.service
 
