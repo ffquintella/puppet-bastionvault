@@ -1,0 +1,8 @@
+<%- | String[1] $user | -%>
+#!/bin/sh
+# Managed by Puppet — bastionvault module.
+# Re-exec as the rootless service user so we can talk to that user's Podman
+# socket, then run the in-container `bvault` CLI.
+TTY_FLAG=
+if [ -t 0 ] && [ -t 1 ]; then TTY_FLAG=-t; fi
+exec /usr/bin/sudo -n -u <%= $user %> /usr/bin/podman exec -i $TTY_FLAG bastionvault bvault "$@"

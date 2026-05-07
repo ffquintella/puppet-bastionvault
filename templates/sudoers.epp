@@ -1,0 +1,7 @@
+<%- | String[1] $user, String[1] $group | -%>
+# Managed by Puppet — bastionvault module.
+# Allow members of <%= $group %> to invoke the in-container `bvault` CLI as
+# the rootless service user, without a password. The wrapper at
+# /usr/local/bin/bvault is the only intended entry point.
+%<%= $group %> ALL=(<%= $user %>) NOPASSWD: /usr/bin/podman exec -i bastionvault bvault *, /usr/bin/podman exec -i -t bastionvault bvault *
+Defaults!/usr/bin/podman !requiretty

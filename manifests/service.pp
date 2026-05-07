@@ -74,6 +74,35 @@ class bastionvault::service {
         Exec['bastionvault-podman-migrate'],
       ],
     }
+
+    # System-level wrapper unit so operators can run `systemctl status
+    # bastionvault` (and start/stop/reload) without remembering the
+    # `--user --machine=<user>@.host` incantation. The wrapper is a
+    # oneshot/RemainAfterExit unit that proxies to the rootless user
+    # service via systemd's user@.host machine target.
+    file { '/etc/systemd/system/bastionvault.service':
+      ensure  => file,
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0644',
+      content => epp('bastionvault/bastionvault.service.epp', { 'uid' => $_uid, 'user' => $user }),
+      notify  => Exec['bastionvault-system-daemon-reload'],
+    }
+
+    exec { 'bastionvault-system-daemon-reload':
+      command     => '/usr/bin/systemctl daemon-reload',
+      refreshonly => true,
+    }
+
+    service { 'bastionvault':
+      ensure  => running,
+      enable  => true,
+      require => [
+        File['/etc/systemd/system/bastionvault.service'],
+        Exec['bastionvault-system-daemon-reload'],
+        Exec['bastionvault-user-start'],
+      ],
+    }
   }
 
   if $bastionvault::manage_firewall {

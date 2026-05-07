@@ -170,6 +170,7 @@ class bastionvault (
   contain bastionvault::config
   contain bastionvault::cgroups
   contain bastionvault::service
+  contain bastionvault::cli
 
   Class['bastionvault::install']
   -> Class['bastionvault::user']
@@ -177,4 +178,5 @@ class bastionvault (
   -> Class['bastionvault::config']
   -> Class['bastionvault::cgroups']
   -> Class['bastionvault::service']
+  -> Class['bastionvault::cli']
 }

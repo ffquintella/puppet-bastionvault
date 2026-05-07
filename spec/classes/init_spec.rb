@@ -23,8 +23,12 @@ if catalog_harness == :regent
     it { is_expected.to contain_class('bastionvault::config') }
     it { is_expected.to contain_class('bastionvault::cgroups') }
     it { is_expected.to contain_class('bastionvault::service') }
+    it { is_expected.to contain_class('bastionvault::cli') }
     it { is_expected.to contain_file('/etc/bastionvault/config.hcl') }
     it { is_expected.to contain_file('/var/lib/bastionvault/.config/containers/systemd/bastionvault.container') }
+    it { is_expected.to contain_file('/etc/systemd/system/bastionvault.service') }
+    it { is_expected.to contain_file('/usr/local/bin/bvault') }
+    it { is_expected.to contain_file('/etc/sudoers.d/bastionvault') }
   end
   return
 end
