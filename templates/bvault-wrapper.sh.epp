@@ -5,4 +5,7 @@
 # socket, then run the in-container `bvault` CLI.
 TTY_FLAG=
 if [ -t 0 ] && [ -t 1 ]; then TTY_FLAG=-t; fi
+# Move to a directory the target user can read, otherwise sudo inherits the
+# caller's cwd (e.g. /root) and the rootless user fails to chdir into it.
+cd / || exit 1
 exec /usr/bin/sudo -n -u <%= $user %> /usr/bin/podman exec -i $TTY_FLAG bastionvault bvault "$@"
