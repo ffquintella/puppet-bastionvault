@@ -34,6 +34,11 @@ class bastionvault::service {
     exec { 'bastionvault-podman-migrate':
       command => "${runas} /bin/sh -c '/usr/bin/podman system migrate && /usr/bin/touch ${_migrate_flag}'",
       creates => $_migrate_flag,
+      cwd     => $home,
+      require => [
+        Podman::Subuid[$user],
+        Podman::Subgid[$user],
+      ],
     }
 
     file { $unit_path:

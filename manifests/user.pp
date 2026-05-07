@@ -80,19 +80,19 @@ class bastionvault::user {
 
   # Subordinate UID/GID ranges. System users are NOT auto-allocated subids by
   # useradd, but rootless podman requires them to set up the user namespace.
-  # We append a single line to /etc/subuid and /etc/subgid; podman picks the
-  # change up on the next `podman system migrate` (handled in service.pp).
-  $_subid_line = "${user}:${bastionvault::subid_start}:${bastionvault::subid_count}"
-
-  exec { "bastionvault-subuid-${user}":
-    command => "/bin/sh -c \"printf '%s\\n' '${_subid_line}' >> /etc/subuid\"",
-    unless  => "/bin/grep -q '^${user}:' /etc/subuid",
+  # We use the puppet/podman defined types so the entries become fragments of
+  # the concat-managed /etc/subuid and /etc/subgid (rather than fighting the
+  # concat with a raw append). This requires `include podman` to be active in
+  # the catalog so the Concat targets exist.
+  podman::subuid { $user:
+    subuid  => $bastionvault::subid_start,
+    count   => $bastionvault::subid_count,
     require => User[$user],
   }
 
-  exec { "bastionvault-subgid-${user}":
-    command => "/bin/sh -c \"printf '%s\\n' '${_subid_line}' >> /etc/subgid\"",
-    unless  => "/bin/grep -q '^${user}:' /etc/subgid",
+  podman::subgid { $user:
+    subgid  => $bastionvault::subid_start,
+    count   => $bastionvault::subid_count,
     require => User[$user],
   }
 }
