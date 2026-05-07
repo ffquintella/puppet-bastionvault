@@ -46,10 +46,13 @@ class bastionvault::service {
       refreshonly => true,
     }
 
-    exec { 'bastionvault-user-enable':
-      command => "${runas} /usr/bin/systemctl --user enable --now bastionvault.service",
+    # Quadlet-generated units cannot be `systemctl enable`d (they live under
+    # /run/.../generator/). Auto-start at boot is configured via [Install] in
+    # the .container file; here we only need to start it on first apply.
+    exec { 'bastionvault-user-start':
+      command => "${runas} /usr/bin/systemctl --user start bastionvault.service",
       unless  => "${runas} /usr/bin/systemctl --user is-active bastionvault.service",
-      require => File[$unit_path],
+      require => [File[$unit_path], Exec['bastionvault-user-daemon-reload']],
     }
   }
 
