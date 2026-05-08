@@ -18,6 +18,17 @@ class bastionvault::cli {
     content => epp('bastionvault/bvault-wrapper.sh.epp', { 'user' => $user }),
   }
 
+  # Operator helper: `bvault-ctl status` reports the systemd wrapper unit
+  # state plus the rootless container state. Read-only; safe for any user
+  # in the bastionvault group.
+  file { '/usr/local/bin/bvault-ctl':
+    ensure  => file,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0755',
+    content => epp('bastionvault/bvault-ctl.sh.epp', { 'user' => $user }),
+  }
+
   file { '/etc/sudoers.d/bastionvault':
     ensure       => file,
     owner        => 'root',

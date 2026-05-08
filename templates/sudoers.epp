@@ -3,5 +3,5 @@
 # Allow members of <%= $group %> to invoke the in-container `bvault` CLI as
 # the rootless service user, without a password. The wrapper at
 # /usr/local/bin/bvault is the only intended entry point.
-%<%= $group %> ALL=(<%= $user %>) NOPASSWD: /usr/bin/podman exec -i bastionvault bvault *, /usr/bin/podman exec -i -t bastionvault bvault *
+%<%= $group %> ALL=(<%= $user %>) NOPASSWD: /usr/bin/podman exec -i bastionvault bvault *, /usr/bin/podman exec -i -t bastionvault bvault *, /usr/bin/podman inspect --format * bastionvault
 Defaults!/usr/bin/podman !requiretty

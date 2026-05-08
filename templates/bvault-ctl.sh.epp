@@ -1,0 +1,45 @@
+<%- | String[1] $user | -%>
+#!/bin/sh
+# Managed by Puppet — bastionvault module.
+# Operator helper for the bastionvault service. Currently exposes a single
+# `status` subcommand that verifies both the system-level wrapper unit and
+# the rootless Podman container state.
+set -u
+
+usage() {
+  cat <<EOF
+Usage: bvault-ctl <command>
+
+Commands:
+  status    Report whether the bastionvault service and container are running.
+EOF
+}
+
+cmd_status() {
+  rc=0
+
+  if /usr/bin/systemctl is-active --quiet bastionvault.service; then
+    echo "service:   active"
+  else
+    echo "service:   inactive"
+    rc=1
+  fi
+
+  state=$(/usr/bin/sudo -n -u <%= $user %> /usr/bin/podman inspect \
+    --format '{{.State.Status}}' bastionvault 2>/dev/null || true)
+  if [ -n "$state" ]; then
+    echo "container: $state"
+    [ "$state" = "running" ] || rc=1
+  else
+    echo "container: missing"
+    rc=1
+  fi
+
+  return $rc
+}
+
+case "${1:-}" in
+  status)        shift; cmd_status "$@" ;;
+  ''|-h|--help)  usage ;;
+  *)             echo "bvault-ctl: unknown command '$1'" >&2; usage >&2; exit 2 ;;
+esac
