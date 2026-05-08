@@ -16,6 +16,7 @@
 # @param data_dir        Host path for persistent data.
 # @param config_dir      Host path for the rendered config.hcl.
 # @param tls_dir         Host path for TLS material.
+# @param log_dir         Host path bind-mounted into the container at /var/log/bvault.
 # @param tls_cert_source Optional Puppet `source` for the TLS cert file.
 # @param tls_key_content Optional Sensitive content for the TLS key file.
 # @param user            Non-root system user the container runs under.
@@ -63,9 +64,10 @@ class bastionvault (
   Stdlib::IP::Address                          $listen_address  = '0.0.0.0',
   Boolean                                      $tls_disable     = false,
 
-  Stdlib::Absolutepath                         $data_dir        = '/var/lib/bastionvault/data',
-  Stdlib::Absolutepath                         $config_dir      = '/etc/bastionvault',
-  Stdlib::Absolutepath                         $tls_dir         = '/etc/bastionvault/tls',
+  Stdlib::Absolutepath                         $data_dir        = '/srv/application-data/bastionvault',
+  Stdlib::Absolutepath                         $config_dir      = '/srv/application-config/bastionvault',
+  Stdlib::Absolutepath                         $tls_dir         = '/srv/application-config/bastionvault/tls',
+  Stdlib::Absolutepath                         $log_dir         = '/srv/application-logs/bastionvault',
 
   Optional[String]                             $tls_cert_source = undef,
   Optional[Sensitive[String]]                  $tls_key_content = undef,

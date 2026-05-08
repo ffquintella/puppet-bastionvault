@@ -156,9 +156,10 @@ class bastionvault (
   Boolean                     $tls_disable     = false,
 
   # --- paths (host) ---
-  Stdlib::Absolutepath        $data_dir        = '/var/lib/bastionvault/data',
-  Stdlib::Absolutepath        $config_dir      = '/etc/bastionvault',
-  Stdlib::Absolutepath        $tls_dir         = '/etc/bastionvault/tls',
+  Stdlib::Absolutepath        $data_dir        = '/srv/application-data/bastionvault',
+  Stdlib::Absolutepath        $config_dir      = '/srv/application-config/bastionvault',
+  Stdlib::Absolutepath        $tls_dir         = '/srv/application-config/bastionvault/tls',
+  Stdlib::Absolutepath        $log_dir         = '/srv/application-logs/bastionvault',
 
   # --- TLS material (operator-supplied) ---
   Optional[String]            $tls_cert_source = undef,        # puppet:/// or file path

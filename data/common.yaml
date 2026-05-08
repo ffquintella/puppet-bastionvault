@@ -9,9 +9,10 @@ bastionvault::container_port: 8200
 bastionvault::listen_address: '0.0.0.0'
 bastionvault::tls_disable: false
 
-bastionvault::data_dir: '/var/lib/bastionvault/data'
-bastionvault::config_dir: '/etc/bastionvault'
-bastionvault::tls_dir: '/etc/bastionvault/tls'
+bastionvault::data_dir: '/srv/application-data/bastionvault'
+bastionvault::config_dir: '/srv/application-config/bastionvault'
+bastionvault::tls_dir: '/srv/application-config/bastionvault/tls'
+bastionvault::log_dir: '/srv/application-logs/bastionvault'
 
 bastionvault::user: 'bastionvault'
 bastionvault::group: 'bastionvault'

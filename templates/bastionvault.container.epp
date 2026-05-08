@@ -20,6 +20,7 @@ PublishPort=<%= $bastionvault::internal_api_port %>:<%= $bastionvault::internal_
 Volume=<%= $bastionvault::config_dir %>/config.hcl:/etc/bvault/config.hcl:ro,Z
 Volume=<%= $bastionvault::tls_dir %>:/etc/bvault/tls:ro,Z
 Volume=<%= $bastionvault::data_dir %>:/var/lib/bvault/data:Z
+Volume=<%= $bastionvault::log_dir %>:/var/log/bvault:Z
 Environment=RUST_LOG=<%= $bastionvault::log_level %>
 
 [Service]

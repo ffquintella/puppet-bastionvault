@@ -16,6 +16,7 @@ class bastionvault::user {
   $data_dir   = $bastionvault::data_dir
   $config_dir = $bastionvault::config_dir
   $tls_dir    = $bastionvault::tls_dir
+  $log_dir    = $bastionvault::log_dir
 
   group { $group:
     ensure => present,
@@ -44,8 +45,33 @@ class bastionvault::user {
     require => User[$user],
   }
 
-  # Host-side bind mount targets.
-  file { [$config_dir, $tls_dir]:
+  # Make sure the full directory paths exist before the File resources below
+  # take over ownership/mode management. `mkdir -p` is a no-op when the dirs
+  # already exist (idempotent via `creates`) and tolerates arbitrarily deep
+  # parent paths if an operator overrides $data_dir / $config_dir / $log_dir.
+  [$data_dir, $config_dir, $tls_dir, $log_dir].each |$_dir| {
+    exec { "bastionvault-mkdir-${_dir}":
+      command => "/usr/bin/mkdir -p ${_dir}",
+      creates => $_dir,
+      before  => File[$_dir],
+    }
+  }
+
+  # Manage the immediate parents so they get a sane mode (root:root 0755)
+  # rather than mkdir's default umask. Idempotent + tolerates parents that
+  # overlap with each other or with $home.
+  [dirname($data_dir), dirname($config_dir), dirname($log_dir)].unique.each |$_parent| {
+    ensure_resource('file', $_parent, {
+        'ensure' => 'directory',
+        'owner'  => 'root',
+        'group'  => 'root',
+        'mode'   => '0755',
+    })
+  }
+
+  # Host-side bind mount targets. The mkdir exec above guarantees they exist;
+  # these resources own mode + ownership of the directory inode.
+  file { [$config_dir, $tls_dir, $log_dir]:
     ensure  => directory,
     owner   => $user,
     group   => $group,
@@ -53,22 +79,27 @@ class bastionvault::user {
     require => User[$user],
   }
 
-  # Data dir parent + data dir. ensure_resource is idempotent and avoids
-  # duplicate-declaration errors when the parent overlaps with $home.
-  $_data_parent = dirname($data_dir)
-  ensure_resource('file', $_data_parent, {
-      'ensure' => 'directory',
-      'owner'  => $user,
-      'group'  => $group,
-      'mode'   => '0750',
-  })
-
   file { $data_dir:
     ensure  => directory,
     owner   => $user,
     group   => $group,
     mode    => '0750',
-    require => [User[$user], File[$_data_parent]],
+    require => User[$user],
+  }
+
+  # Repair ownership of any pre-existing contents (e.g. data migrated in from
+  # the old /var/lib/bastionvault/data path, or files seeded by an operator
+  # before Puppet ran). The `find` guard makes this a no-op once everything is
+  # already owned by ${user}:${group}, so it does not chown on every run.
+  [$data_dir, $config_dir, $tls_dir, $log_dir].each |$_dir| {
+    exec { "bastionvault-chown-${_dir}":
+      command => "/usr/bin/chown -R ${user}:${group} ${_dir}",
+      onlyif  => "/usr/bin/find ${_dir} \\( ! -user ${user} -o ! -group ${group} \\) -print -quit | /usr/bin/grep -q .",
+      require => [
+        User[$user],
+        File[$_dir],
+      ],
+    }
   }
 
   # systemd linger so the user instance survives logout/reboot.

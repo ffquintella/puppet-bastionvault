@@ -12,7 +12,7 @@ Full design lives in [docs/specs.md](docs/specs.md).
 - Creates a non-root system user (`bastionvault`) with systemd lingering.
 - Renders `config.hcl` (single-node or HA / hiqlite Raft) from parameters.
 - Installs a Quadlet `.container` unit under the user's systemd manager.
-- Sets SELinux `container_file_t` on the data, config, and TLS dirs.
+- Sets SELinux `container_file_t` on the data, config, TLS, and log dirs.
 - Drops a cgroups v2 slice override with `MemoryMax`, `CPUQuota`,
   `TasksMax`, and `IOWeight`.
 - Brings the service to **running, but uninitialized**.

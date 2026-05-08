@@ -24,7 +24,7 @@ if catalog_harness == :regent
     it { is_expected.to contain_class('bastionvault::cgroups') }
     it { is_expected.to contain_class('bastionvault::service') }
     it { is_expected.to contain_class('bastionvault::cli') }
-    it { is_expected.to contain_file('/etc/bastionvault/config.hcl') }
+    it { is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl') }
     it { is_expected.to contain_file('/var/lib/bastionvault/.config/containers/systemd/bastionvault.container') }
     it { is_expected.to contain_file('/etc/systemd/system/bastionvault.service') }
     it { is_expected.to contain_file('/usr/local/bin/bvault') }
@@ -54,13 +54,13 @@ describe 'bastionvault' do
         end
 
         it 'renders config.hcl with single-node hiqlite block' do
-          is_expected.to contain_file('/etc/bastionvault/config.hcl').with_content(
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl').with_content(
             %r{storage "hiqlite"},
           )
-          is_expected.to contain_file('/etc/bastionvault/config.hcl').without_content(
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl').without_content(
             %r{listen_addr_raft},
           )
-          is_expected.to contain_file('/etc/bastionvault/config.hcl').without_content(
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl').without_content(
             %r{nodes\s*=},
           )
         end
@@ -75,7 +75,7 @@ describe 'bastionvault' do
 
         it 'manages SELinux fcontext for the data dir' do
           is_expected.to contain_selinux__fcontext('bastionvault-data').with(
-            pathspec: '/var/lib/bastionvault/data(/.*)?',
+            pathspec: '/srv/application-data/bastionvault(/.*)?',
             seltype:  'container_file_t',
           )
         end
@@ -135,7 +135,7 @@ describe 'bastionvault' do
         it { is_expected.to compile.with_all_deps }
 
         it 'renders the hiqlite ha block with nodes and listen_addr_*' do
-          is_expected.to contain_file('/etc/bastionvault/config.hcl')
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
             .with_content(%r{listen_addr_raft\s*=\s*"0\.0\.0\.0:8210"})
             .with_content(%r{listen_addr_api\s*=\s*"0\.0\.0\.0:8220"})
             .with_content(%r{"1:10\.0\.0\.11:8210:10\.0\.0\.11:8220"})
@@ -185,7 +185,7 @@ describe 'bastionvault' do
         end
 
         it 'emits both disable flags' do
-          is_expected.to contain_file('/etc/bastionvault/config.hcl')
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
             .with_content(%r{tls_raft_disable\s*=\s*true})
             .with_content(%r{tls_api_disable\s*=\s*true})
         end
