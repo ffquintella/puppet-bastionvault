@@ -100,6 +100,11 @@ class bastionvault::config {
       # idempotent — once the cert exists, the exec is skipped on subsequent
       # runs. If the operator later supplies a real cert via parameters, the
       # File resources above will replace the generated one.
+      # Force the cert to be a true end-entity, not a self-signed CA. OpenSSL
+      # 3.x adds `basicConstraints=CA:TRUE` to `req -x509` output by default,
+      # which webpki/rustls rejects as `CaUsedAsEndEntity` when the bvault
+      # CLI connects. Pinning CA:FALSE + serverAuth EKU + a SAN produces a
+      # cert modern TLS stacks accept.
       exec { 'bastionvault-self-signed-cert':
         command => [
           '/usr/bin/openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
@@ -107,6 +112,9 @@ class bastionvault::config {
           '-keyout', $_key_path,
           '-out', $_cert_path,
           '-subj', "/CN=${_cn}",
+          '-addext', 'basicConstraints=critical,CA:FALSE',
+          '-addext', 'keyUsage=critical,digitalSignature,keyEncipherment',
+          '-addext', 'extendedKeyUsage=serverAuth',
           '-addext', "subjectAltName=${_san_str}",
         ],
         creates => $_cert_path,
