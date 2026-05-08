@@ -17,8 +17,18 @@
 # @param config_dir      Host path for the rendered config.hcl.
 # @param tls_dir         Host path for TLS material.
 # @param log_dir         Host path bind-mounted into the container at /var/log/bvault.
-# @param tls_cert_source Optional Puppet `source` for the TLS cert file.
-# @param tls_key_content Optional Sensitive content for the TLS key file.
+# @param tls_cert_source Optional Puppet `source` URI for the TLS cert file.
+# @param tls_cert_content Optional literal PEM content for the TLS cert file.
+# @param tls_key_source Optional Puppet `source` URI for the TLS key file.
+# @param tls_key_content Optional Sensitive PEM content for the TLS key file.
+# @param tls_self_signed When true and no cert/key is supplied (and TLS is not
+#   disabled), generate a self-signed cert+key on the host the first time the
+#   module runs. NOT for production — use a real CA-issued cert in prod.
+# @param tls_self_signed_cn CN for the self-signed cert. Defaults to the FQDN.
+# @param tls_self_signed_san Array of SAN entries (`DNS:` or `IP:` prefixed)
+#   for the self-signed cert. Defaults to DNS:<fqdn>, DNS:<hostname>, plus the
+#   primary IPv4 if known.
+# @param tls_self_signed_days Validity period in days for the self-signed cert.
 # @param user            Non-root system user the container runs under.
 # @param group           Group for $user.
 # @param uid             Optional fixed UID; otherwise allocated by useradd.
@@ -70,7 +80,14 @@ class bastionvault (
   Stdlib::Absolutepath                         $log_dir         = '/srv/application-logs/bastionvault',
 
   Optional[String]                             $tls_cert_source = undef,
+  Optional[String]                             $tls_cert_content = undef,
+  Optional[String]                             $tls_key_source  = undef,
   Optional[Sensitive[String]]                  $tls_key_content = undef,
+
+  Boolean                                      $tls_self_signed      = true,
+  Optional[String[1]]                          $tls_self_signed_cn   = undef,
+  Optional[Array[String[1]]]                   $tls_self_signed_san  = undef,
+  Integer[1]                                   $tls_self_signed_days = 825,
 
   String[1]                                    $user            = 'bastionvault',
   String[1]                                    $group           = 'bastionvault',

@@ -8,6 +8,7 @@ class bastionvault::install {
     'fuse-overlayfs',
     'shadow-utils',
     'policycoreutils-python-utils',
+    'openssl',
   ]
 
   ensure_packages($packages, { 'ensure' => 'installed' })
