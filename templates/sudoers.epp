@@ -4,4 +4,7 @@
 # the rootless service user, without a password. The wrapper at
 # /usr/local/bin/bvault is the only intended entry point.
 %<%= $group %> ALL=(<%= $user %>) NOPASSWD: /usr/bin/podman exec -i bastionvault bvault *, /usr/bin/podman exec -i -t bastionvault bvault *, /usr/bin/podman inspect --format * bastionvault
+# Allow `bvault-ctl restart` to drive the system-level wrapper unit as root.
+%<%= $group %> ALL=(root) NOPASSWD: /usr/bin/systemctl restart bastionvault.service
 Defaults!/usr/bin/podman !requiretty
+Defaults!/usr/bin/systemctl !requiretty
