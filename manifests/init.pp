@@ -109,8 +109,8 @@ class bastionvault (
 
   Enum['single','ha']                          $mode            = 'single',
   Integer[1, 255]                              $node_id         = 1,
-  Sensitive[String[1]]                         $secret_raft     = Sensitive('CHANGE_ME_RAFT'),
-  Sensitive[String[1]]                         $secret_api      = Sensitive('CHANGE_ME_API_'),
+  Variant[Sensitive[String[1]], String[1]]     $secret_raft     = Sensitive('CHANGE_ME_RAFT'),
+  Variant[Sensitive[String[1]], String[1]]     $secret_api      = Sensitive('CHANGE_ME_API_'),
 
   Stdlib::Host                                 $raft_listen_addr  = '0.0.0.0',
   Stdlib::Port                                 $raft_port         = 8210,
@@ -167,8 +167,20 @@ class bastionvault (
     }
   }
 
+  # Normalize secrets to Sensitive. Operators may pass either a Sensitive
+  # value (preferred — eyaml decrypts to Sensitive automatically) or a plain
+  # String. Downstream code and templates always read the *_sensitive vars.
+  $secret_raft_sensitive = $secret_raft ? {
+    Sensitive => $secret_raft,
+    default   => Sensitive($secret_raft),
+  }
+  $secret_api_sensitive = $secret_api ? {
+    Sensitive => $secret_api,
+    default   => Sensitive($secret_api),
+  }
+
   # Placeholder secret warning (compile-time, no Sensitive leak).
-  if $secret_raft.unwrap == 'CHANGE_ME_RAFT' or $secret_api.unwrap == 'CHANGE_ME_API_' {
+  if $secret_raft_sensitive.unwrap == 'CHANGE_ME_RAFT' or $secret_api_sensitive.unwrap == 'CHANGE_ME_API_' {
     warning('bastionvault: Raft/API secrets are still set to placeholder values. Set them via Hiera eyaml before production use.')
   }
 

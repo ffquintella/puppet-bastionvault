@@ -6,8 +6,8 @@
 storage "hiqlite" {
   data_dir    = "/var/lib/bvault/data"
   node_id     = <%= $bastionvault::node_id %>
-  secret_raft = "<%= $bastionvault::secret_raft.unwrap %>"
-  secret_api  = "<%= $bastionvault::secret_api.unwrap %>"
+  secret_raft = "<%= $bastionvault::secret_raft_sensitive.unwrap %>"
+  secret_api  = "<%= $bastionvault::secret_api_sensitive.unwrap %>"
 <%- if $bastionvault::mode == 'ha' { -%>
   listen_addr_api  = "<%= $bastionvault::raft_listen_addr %>:<%= $bastionvault::internal_api_port %>"
   listen_addr_raft = "<%= $bastionvault::raft_listen_addr %>:<%= $bastionvault::raft_port %>"
