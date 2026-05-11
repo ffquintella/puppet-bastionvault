@@ -136,8 +136,10 @@ describe 'bastionvault' do
 
         it 'renders the hiqlite ha block with nodes and listen_addr_*' do
           is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
-            .with_content(%r{listen_addr_raft\s*=\s*"0\.0\.0\.0:8210"})
-            .with_content(%r{listen_addr_api\s*=\s*"0\.0\.0\.0:8220"})
+            .with_content(%r{listen_addr_raft\s*=\s*"0\.0\.0\.0"})
+            .with_content(%r{listen_addr_api\s*=\s*"0\.0\.0\.0"})
+            .with_content(%r{port_raft\s*=\s*8210})
+            .with_content(%r{port_api\s*=\s*8220})
             .with_content(%r{"1:10\.0\.0\.11:8210:10\.0\.0\.11:8220"})
             .with_content(%r{"2:10\.0\.0\.12:8210:10\.0\.0\.12:8220"})
             .with_content(%r{"3:10\.0\.0\.13:8210:10\.0\.0\.13:8220"})

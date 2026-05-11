@@ -9,8 +9,10 @@ storage "hiqlite" {
   secret_raft = "<%= $bastionvault::secret_raft_sensitive.unwrap %>"
   secret_api  = "<%= $bastionvault::secret_api_sensitive.unwrap %>"
 <%- if $bastionvault::mode == 'ha' { -%>
-  listen_addr_api  = "<%= $bastionvault::raft_listen_addr %>:<%= $bastionvault::internal_api_port %>"
-  listen_addr_raft = "<%= $bastionvault::raft_listen_addr %>:<%= $bastionvault::raft_port %>"
+  listen_addr_api  = "<%= $bastionvault::raft_listen_addr %>"
+  listen_addr_raft = "<%= $bastionvault::raft_listen_addr %>"
+  port_api         = <%= $bastionvault::internal_api_port %>
+  port_raft        = <%= $bastionvault::raft_port %>
   nodes            = [
 <%-   $bastionvault::nodes.each |$n| { -%>
     "<%= $n['id'] %>:<%= $n['raft_host'] %>:<%= $n['raft_port'] %>:<%= $n['api_host'] %>:<%= $n['api_port'] %>",

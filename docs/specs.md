@@ -54,7 +54,8 @@ From `deploy/container/Containerfile`:
 From `config/single-node.hcl` and `config/ha-cluster.hcl` (HCL schema):
 
 - `storage "hiqlite" { … }` block with: `data_dir`, `node_id`, `secret_raft`,
-  `secret_api`. HA additionally sets `listen_addr_api`, `listen_addr_raft`,
+  `secret_api`. HA additionally sets `listen_addr_api`, `listen_addr_raft`
+  (host-only — hiqlite appends the port from `nodes`), `port_api`, `port_raft`,
   and `nodes = [ "id:raft_host:raft_port:api_host:api_port", … ]`. TLS on
   Raft/API channels is on by default with auto-generated certs (post-quantum
   X25519MLKEM768); custom certs go under `tls_raft_*` / `tls_api_*`; can be
@@ -254,9 +255,9 @@ log_level = "<%= $log_level %>"
 pid_file  = "<%= $pid_file %>"
 ```
 
-**ha** adds `listen_addr_api`, `listen_addr_raft`, `nodes`, and the optional
-TLS toggles inside the `storage "hiqlite"` block, exactly as in
-`ha-cluster.hcl`.
+**ha** adds `listen_addr_api`, `listen_addr_raft` (host-only), `port_api`,
+`port_raft`, `nodes`, and the optional TLS toggles inside the
+`storage "hiqlite"` block, exactly as in `ha-cluster.hcl`.
 
 The file is written `0640`, owner `$user:$group`, and notifies
 `Service[bastionvault]` (i.e. the Quadlet unit).
@@ -427,8 +428,9 @@ For each class, on EL9 and EL10 facts via `rspec-puppet-facts`:
   `docker.io/bastionvault:0.3.2`; non-empty → includes account segment.
 - **port default**: Quadlet renders `PublishPort=4200:8200`.
 - **mode=single**: config.hcl contains `storage "hiqlite"` with no `nodes`.
-- **mode=ha**: config.hcl contains `listen_addr_api`, `listen_addr_raft`,
-  and `nodes = [ … ]` lines matching the input array.
+- **mode=ha**: config.hcl contains host-only `listen_addr_api` /
+  `listen_addr_raft`, separate `port_api` / `port_raft`, and `nodes = [ … ]`
+  lines matching the input array.
 - **HA validation**: `$mode='ha'` without `$nodes` → compile failure;
   `$node_id` not in `$nodes[*].id` → compile failure.
 - **secrets**: `Sensitive` values never appear in resource titles or
