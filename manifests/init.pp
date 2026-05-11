@@ -42,6 +42,9 @@
 # @param tasks_max       systemd TasksMax for the user slice drop-in.
 # @param io_weight       systemd IOWeight for the user slice drop-in.
 # @param log_level       BastionVault log level.
+# @param log_to_stderr   Mirror operations/security logs to stderr in addition to the on-disk files.
+# @param log_rotate_size_mb Per-file rotation threshold in MiB. 0 = use server default (100).
+# @param log_rotate_keep    Number of rotated copies kept per stream. 0 = use server default (5).
 # @param mode            'single' or 'ha'.
 # @param node_id         hiqlite Raft node id (must be in $nodes when ha).
 # @param secret_raft     Sensitive shared Raft secret (HA: same on all nodes).
@@ -106,6 +109,9 @@ class bastionvault (
   Integer                                      $io_weight       = 100,
 
   Enum['trace','debug','info','warn','error']  $log_level       = 'info',
+  Boolean                                      $log_to_stderr      = true,
+  Integer[0]                                   $log_rotate_size_mb = 0,
+  Integer[0]                                   $log_rotate_keep    = 0,
 
   Enum['single','ha']                          $mode            = 'single',
   Integer[1, 255]                              $node_id         = 1,

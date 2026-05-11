@@ -48,4 +48,15 @@ listener "tcp" {
 
 api_addr  = "<%= $bastionvault::api_addr_effective %>"
 log_level = "<%= $bastionvault::log_level %>"
+# In-container path; the host directory $bastionvault::log_dir is bind-mounted
+# here by the Quadlet template. The server writes operations.log, security.log,
+# and audit.log into this directory.
+log_dir   = "/var/log/bvault"
+log_to_stderr      = <%= $bastionvault::log_to_stderr %>
+<%- if $bastionvault::log_rotate_size_mb > 0 { -%>
+log_rotate_size_mb = <%= $bastionvault::log_rotate_size_mb %>
+<%- } -%>
+<%- if $bastionvault::log_rotate_keep > 0 { -%>
+log_rotate_keep    = <%= $bastionvault::log_rotate_keep %>
+<%- } -%>
 pid_file  = "<%= $bastionvault::pid_file %>"
