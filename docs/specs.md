@@ -227,6 +227,13 @@ class bastionvault (
   # --- host CA trust ---
   Boolean                     $mount_host_ca_bundle = true,    # bind-mount host CA bundle into container
   Optional[Stdlib::Absolutepath] $host_ca_bundle_path = undef, # auto-detect when undef
+  # Extra CAs installed into /etc/pki/ca-trust/source/anchors/ and picked up
+  # by `update-ca-trust extract`. Service is restarted on bundle change.
+  Hash[String[1], Struct[{
+    Optional['content'] => String,
+    Optional['base64']  => String,
+    Optional['source']  => String,
+  }]]                         $extra_ca_certs = {},
 
   # --- top-level config ---
   Optional[Stdlib::HTTPSUrl]  $api_addr        = undef,        # rendered as https://<host>:<listen_port>

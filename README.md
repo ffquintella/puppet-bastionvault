@@ -143,6 +143,30 @@ and `/etc/ssl/certs/ca-certificates.crt` so software looking for either
 location finds it. The mount uses the lowercase `:z` SELinux flag
 (shared label) so it does not steal the label from other host consumers.
 
+### Adding extra CAs to the trust store
+
+When bvault TLS material (listener cert, Raft cert, hiqlite API cert) is
+signed by a private CA that the host does not trust yet, peer TLS
+verification fails. The `extra_ca_certs` parameter installs additional
+CA certificates into the host trust store and rebuilds the bundle via
+`update-ca-trust extract`. Because the bundle is bind-mounted into the
+container, the new CA is trusted on both sides. The service is restarted
+when the bundle changes.
+
+```puppet
+class { 'bastionvault':
+  extra_ca_certs => {
+    'internal-root' => { source => 'puppet:///modules/profile/ca/internal-root.crt' },
+    'raft-issuer'   => { base64 => lookup('bastionvault::raft_issuer_ca_b64') },
+    'inline-ca'     => { content => "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n" },
+  },
+}
+```
+
+Each entry accepts exactly one of `content` (literal PEM), `base64`
+(base64-encoded PEM), or `source` (Puppet `source` URI). The anchor file
+lands at `/etc/pki/ca-trust/source/anchors/bvault-<name>.crt`.
+
 ### Example: base64 PEM via Hiera + eyaml
 
 `eyaml encrypt -s "$(base64 -w0 server.key)"` produces an

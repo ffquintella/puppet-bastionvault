@@ -85,6 +85,14 @@
 # @param host_ca_bundle_path Override for the host CA bundle path. When undef
 #   (default), the module auto-detects the canonical EL location
 #   (`/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem`).
+# @param extra_ca_certs Hash of additional CA certificates to install into the
+#   host trust store (`/etc/pki/ca-trust/source/anchors/bvault-<name>.crt`).
+#   `update-ca-trust extract` is run to rebuild the bundle, and the service is
+#   restarted so the container picks up the new anchors. Each entry accepts
+#   one of `content` (literal PEM), `base64` (base64-encoded PEM), or
+#   `source` (Puppet file source URI). Useful when bvault TLS material is
+#   signed by an internal CA that isn't in the system trust store yet —
+#   without this, peer Raft / hiqlite API verification fails.
 #
 # @example
 #   include bastionvault
@@ -178,6 +186,12 @@ class bastionvault (
 
   Boolean                                      $mount_host_ca_bundle = true,
   Optional[Stdlib::Absolutepath]               $host_ca_bundle_path  = undef,
+
+  Hash[String[1], Struct[{
+        Optional['content'] => String,
+        Optional['base64']  => String,
+        Optional['source']  => String,
+  }]]                                          $extra_ca_certs       = {},
 ) {
   # OS gate.
   if $facts['os']['family'] != 'RedHat' {
@@ -358,6 +372,7 @@ class bastionvault (
   contain bastionvault::user
   contain bastionvault::selinux
   contain bastionvault::config
+  contain bastionvault::ca_trust
   contain bastionvault::cgroups
   contain bastionvault::service
   contain bastionvault::cli
@@ -366,6 +381,7 @@ class bastionvault (
   -> Class['bastionvault::user']
   -> Class['bastionvault::selinux']
   -> Class['bastionvault::config']
+  -> Class['bastionvault::ca_trust']
   -> Class['bastionvault::cgroups']
   -> Class['bastionvault::service']
   -> Class['bastionvault::cli']
