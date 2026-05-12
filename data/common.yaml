@@ -40,3 +40,7 @@ bastionvault::pid_file: '/var/run/bvault.pid'
 
 bastionvault::manage_selinux: true
 bastionvault::manage_firewall: false
+
+bastionvault::mount_host_ca_bundle: true
+# Leave unset to auto-detect (/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem).
+# bastionvault::host_ca_bundle_path: '/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem'

@@ -163,8 +163,14 @@ class bastionvault (
   Stdlib::Absolutepath        $log_dir         = '/srv/application-logs/bastionvault',
 
   # --- TLS material (operator-supplied) ---
-  Optional[String]            $tls_cert_source = undef,        # puppet:/// or file path
-  Optional[Sensitive[String]] $tls_key_content = undef,
+  # Listener cert/key. Precedence: *_content > *_base64 > *_source > self-signed.
+  Optional[String]            $tls_cert_source  = undef,        # puppet:/// or file path
+  Optional[String]            $tls_cert_content = undef,        # literal PEM
+  Optional[String]            $tls_cert_base64  = undef,        # base64-encoded PEM
+  Optional[String]            $tls_key_source   = undef,
+  Optional[Sensitive[String]] $tls_key_content  = undef,
+  Optional[Variant[Sensitive[String], String]] $tls_key_base64 = undef,
+  Boolean                     $tls_self_signed  = true,         # generate via openssl as fallback
 
   # --- user / runtime ---
   String[1]                   $user            = 'bastionvault',
@@ -202,10 +208,25 @@ class bastionvault (
   # HA TLS toggles (mirrors hiqlite block)
   Boolean                     $cluster_tls_raft_disable = false,
   Boolean                     $cluster_tls_api_disable  = false,
+  # In-container path overrides (rarely needed — only when you bring your own mount).
   Optional[Stdlib::Absolutepath] $cluster_tls_raft_cert = undef,
   Optional[Stdlib::Absolutepath] $cluster_tls_raft_key  = undef,
   Optional[Stdlib::Absolutepath] $cluster_tls_api_cert  = undef,
   Optional[Stdlib::Absolutepath] $cluster_tls_api_key   = undef,
+  # PEM / base64 cert+key — module writes them under $tls_dir and points
+  # config.hcl at /etc/bvault/tls/{raft,cluster-api}.{crt,key} automatically.
+  Optional[String]            $cluster_tls_raft_cert_content = undef,
+  Optional[String]            $cluster_tls_raft_cert_base64  = undef,
+  Optional[Sensitive[String]] $cluster_tls_raft_key_content  = undef,
+  Optional[Variant[Sensitive[String], String]] $cluster_tls_raft_key_base64 = undef,
+  Optional[String]            $cluster_tls_api_cert_content  = undef,
+  Optional[String]            $cluster_tls_api_cert_base64   = undef,
+  Optional[Sensitive[String]] $cluster_tls_api_key_content   = undef,
+  Optional[Variant[Sensitive[String], String]] $cluster_tls_api_key_base64  = undef,
+
+  # --- host CA trust ---
+  Boolean                     $mount_host_ca_bundle = true,    # bind-mount host CA bundle into container
+  Optional[Stdlib::Absolutepath] $host_ca_bundle_path = undef, # auto-detect when undef
 
   # --- top-level config ---
   Optional[Stdlib::HTTPSUrl]  $api_addr        = undef,        # rendered as https://<host>:<listen_port>
@@ -388,8 +409,23 @@ init via an external KMS-backed seal; that is a different design.
   store. A compile-time `warning()` fires if they still equal the default
   `CHANGE_ME_*` placeholders.
 - TLS on cluster channels: defaults to on (matches BastionVault default of
-  auto-generated PQ certs). If the operator supplies custom certs, they go
-  under `$tls_dir` and the four `cluster_tls_*` parameters point at them.
+  auto-generated PQ certs). The operator may supply custom cert+key for
+  Raft and the hiqlite internal API in any of three forms:
+  - `cluster_tls_{raft,api}_cert_content` / `_key_content` — literal PEM,
+  - `cluster_tls_{raft,api}_cert_base64`  / `_key_base64`  — base64 PEM
+    (decoded on the agent; convenient for eyaml-encrypted blobs), or
+  - `cluster_tls_{raft,api}_{cert,key}`  — explicit in-container path
+    (only if you mount the material in yourself).
+  When content/base64 is provided the module writes the file under
+  `$tls_dir` and renders `config.hcl` to point at
+  `/etc/bvault/tls/{raft,cluster-api}.{crt,key}` automatically.
+- Host CA trust: when `mount_host_ca_bundle` is true (default) the host's
+  `update-ca-trust`-managed bundle is bind-mounted read-only into the
+  container at both the EL canonical path
+  (`/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem`) and the
+  Debian-style symlink path (`/etc/ssl/certs/ca-certificates.crt`), so
+  corporate root CAs added on the host are trusted inside the container
+  without any extra plumbing.
 
 ---
 

@@ -21,21 +21,21 @@ storage "hiqlite" {
 <%-   if $bastionvault::cluster_tls_raft_disable { -%>
   tls_raft_disable = true
 <%-   } else { -%>
-<%-     if $bastionvault::cluster_tls_raft_cert { -%>
-  tls_raft_cert = "<%= $bastionvault::cluster_tls_raft_cert %>"
+<%-     if $bastionvault::cluster_tls_raft_cert_path_effective { -%>
+  tls_raft_cert = "<%= $bastionvault::cluster_tls_raft_cert_path_effective %>"
 <%-     } -%>
-<%-     if $bastionvault::cluster_tls_raft_key { -%>
-  tls_raft_key  = "<%= $bastionvault::cluster_tls_raft_key %>"
+<%-     if $bastionvault::cluster_tls_raft_key_path_effective { -%>
+  tls_raft_key  = "<%= $bastionvault::cluster_tls_raft_key_path_effective %>"
 <%-     } -%>
 <%-   } -%>
 <%-   if $bastionvault::cluster_tls_api_disable { -%>
   tls_api_disable = true
 <%-   } else { -%>
-<%-     if $bastionvault::cluster_tls_api_cert { -%>
-  tls_api_cert = "<%= $bastionvault::cluster_tls_api_cert %>"
+<%-     if $bastionvault::cluster_tls_api_cert_path_effective { -%>
+  tls_api_cert = "<%= $bastionvault::cluster_tls_api_cert_path_effective %>"
 <%-     } -%>
-<%-     if $bastionvault::cluster_tls_api_key { -%>
-  tls_api_key  = "<%= $bastionvault::cluster_tls_api_key %>"
+<%-     if $bastionvault::cluster_tls_api_key_path_effective { -%>
+  tls_api_key  = "<%= $bastionvault::cluster_tls_api_key_path_effective %>"
 <%-     } -%>
 <%-   } -%>
 <%- } -%>

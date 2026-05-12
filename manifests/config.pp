@@ -1,11 +1,18 @@
 # @summary Render config.hcl and place TLS material.
 #
 # TLS resolution (when $tls_disable = false):
-#   1. If $tls_cert_content / $tls_cert_source is set, use that for the cert.
-#   2. If $tls_key_content / $tls_key_source is set, use that for the key.
+#   1. If literal PEM (or base64 PEM) is supplied via
+#      $tls_cert_content / $tls_cert_base64 (resolved upstream as
+#      $tls_cert_pem_effective) — likewise for the key — write it out.
+#   2. Else if $tls_cert_source / $tls_key_source is set, fetch from there.
 #   3. Otherwise, if $tls_self_signed is true, generate a self-signed pair
 #      via openssl on first run (idempotent — `creates` guards regeneration).
 #   4. If TLS is enabled and none of the above provide a cert+key, fail.
+#
+# Cluster (Raft / hiqlite API) TLS material supplied as PEM content or
+# base64-encoded PEM is written to $tls_dir as raft.crt/raft.key and
+# cluster-api.crt/cluster-api.key; the in-container paths land in config.hcl
+# automatically.
 #
 # @api private
 class bastionvault::config {
@@ -27,21 +34,21 @@ class bastionvault::config {
     $_cert_path = "${tls_dir}/server.crt"
     $_key_path  = "${tls_dir}/server.key"
 
-    $_cert_provided = $bastionvault::tls_cert_content != undef or $bastionvault::tls_cert_source != undef
-    $_key_provided  = $bastionvault::tls_key_content  != undef or $bastionvault::tls_key_source  != undef
+    $_cert_provided = $bastionvault::tls_cert_pem_effective != undef or $bastionvault::tls_cert_source != undef
+    $_key_provided  = $bastionvault::tls_key_pem_effective  != undef or $bastionvault::tls_key_source  != undef
 
     if !($_cert_provided and $_key_provided) and !$bastionvault::tls_self_signed {
       fail('bastionvault: TLS is enabled but no cert/key was provided and tls_self_signed is false. Either set tls_disable=true, supply tls_cert_*/tls_key_*, or enable tls_self_signed.')
     }
 
     # 1. Operator-supplied cert.
-    if $bastionvault::tls_cert_content != undef {
+    if $bastionvault::tls_cert_pem_effective != undef {
       file { $_cert_path:
         ensure  => file,
         owner   => $user,
         group   => $group,
         mode    => '0644',
-        content => $bastionvault::tls_cert_content,
+        content => $bastionvault::tls_cert_pem_effective,
       }
     } elsif $bastionvault::tls_cert_source != undef {
       file { $_cert_path:
@@ -54,13 +61,13 @@ class bastionvault::config {
     }
 
     # 2. Operator-supplied key.
-    if $bastionvault::tls_key_content != undef {
+    if $bastionvault::tls_key_pem_effective != undef {
       file { $_key_path:
         ensure    => file,
         owner     => $user,
         group     => $group,
         mode      => '0600',
-        content   => $bastionvault::tls_key_content,
+        content   => $bastionvault::tls_key_pem_effective,
         show_diff => false,
       }
     } elsif $bastionvault::tls_key_source != undef {
@@ -146,6 +153,48 @@ class bastionvault::config {
           require   => Exec['bastionvault-self-signed-cert'],
         }
       }
+    }
+  }
+
+  # Cluster (Raft + hiqlite API) TLS material written from PEM/base64 inputs.
+  # These are independent of the listener TLS toggle — HA may run with the
+  # listener disabled but cluster TLS enabled (or vice-versa).
+  if $bastionvault::cluster_tls_raft_cert_pem_effective != undef {
+    file { "${tls_dir}/raft.crt":
+      ensure  => file,
+      owner   => $user,
+      group   => $group,
+      mode    => '0644',
+      content => $bastionvault::cluster_tls_raft_cert_pem_effective,
+    }
+  }
+  if $bastionvault::cluster_tls_raft_key_pem_effective != undef {
+    file { "${tls_dir}/raft.key":
+      ensure    => file,
+      owner     => $user,
+      group     => $group,
+      mode      => '0600',
+      content   => $bastionvault::cluster_tls_raft_key_pem_effective,
+      show_diff => false,
+    }
+  }
+  if $bastionvault::cluster_tls_api_cert_pem_effective != undef {
+    file { "${tls_dir}/cluster-api.crt":
+      ensure  => file,
+      owner   => $user,
+      group   => $group,
+      mode    => '0644',
+      content => $bastionvault::cluster_tls_api_cert_pem_effective,
+    }
+  }
+  if $bastionvault::cluster_tls_api_key_pem_effective != undef {
+    file { "${tls_dir}/cluster-api.key":
+      ensure    => file,
+      owner     => $user,
+      group     => $group,
+      mode      => '0600',
+      content   => $bastionvault::cluster_tls_api_key_pem_effective,
+      show_diff => false,
     }
   }
 }

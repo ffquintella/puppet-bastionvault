@@ -19,8 +19,13 @@
 # @param log_dir         Host path bind-mounted into the container at /var/log/bvault.
 # @param tls_cert_source Optional Puppet `source` URI for the TLS cert file.
 # @param tls_cert_content Optional literal PEM content for the TLS cert file.
+# @param tls_cert_base64 Optional base64-encoded PEM cert. Decoded on the
+#   agent. Convenient when shipping the cert through Hiera/eyaml as a
+#   single line. Ignored if `tls_cert_content` or `tls_cert_source` is set.
 # @param tls_key_source Optional Puppet `source` URI for the TLS key file.
 # @param tls_key_content Optional Sensitive PEM content for the TLS key file.
+# @param tls_key_base64 Optional Sensitive base64-encoded PEM key. Decoded on
+#   the agent. Ignored if `tls_key_content` or `tls_key_source` is set.
 # @param tls_self_signed When true and no cert/key is supplied (and TLS is not
 #   disabled), generate a self-signed cert+key on the host the first time the
 #   module runs. NOT for production — use a real CA-issued cert in prod.
@@ -56,13 +61,30 @@
 # @param cluster_tls_raft_disable Disable TLS on the Raft channel.
 # @param cluster_tls_api_disable  Disable TLS on the hiqlite internal API.
 # @param cluster_tls_raft_cert    Optional custom cert path inside the container.
+#   Set this only when you bring your own mount; if you supply cert *content*
+#   via the parameters below the module writes the file for you and points
+#   the config at the in-container default path automatically.
 # @param cluster_tls_raft_key     Optional custom key path inside the container.
 # @param cluster_tls_api_cert     Optional custom cert path inside the container.
 # @param cluster_tls_api_key      Optional custom key path inside the container.
+# @param cluster_tls_raft_cert_content Optional literal PEM for the Raft cert.
+# @param cluster_tls_raft_cert_base64  Optional base64-encoded PEM Raft cert.
+# @param cluster_tls_raft_key_content  Optional Sensitive PEM for the Raft key.
+# @param cluster_tls_raft_key_base64   Optional Sensitive base64-encoded Raft key.
+# @param cluster_tls_api_cert_content  Optional literal PEM for the hiqlite API cert.
+# @param cluster_tls_api_cert_base64   Optional base64-encoded PEM hiqlite API cert.
+# @param cluster_tls_api_key_content   Optional Sensitive PEM for the hiqlite API key.
+# @param cluster_tls_api_key_base64    Optional Sensitive base64-encoded hiqlite API key.
 # @param api_addr        Public api_addr URL. Auto-derived if undef.
 # @param pid_file        Path used by the binary for its pidfile.
 # @param manage_selinux  Manage SELinux fcontext entries for module-owned paths.
 # @param manage_firewall Open $listen_port in firewalld (off by default).
+# @param mount_host_ca_bundle When true, bind-mount the host's system CA trust
+#   bundle read-only into the container so bvault trusts the same CAs as the
+#   host (corporate root CAs added via `update-ca-trust`, etc.).
+# @param host_ca_bundle_path Override for the host CA bundle path. When undef
+#   (default), the module auto-detects the canonical EL location
+#   (`/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem`).
 #
 # @example
 #   include bastionvault
@@ -82,10 +104,12 @@ class bastionvault (
   Stdlib::Absolutepath                         $tls_dir         = '/srv/application-config/bastionvault/tls',
   Stdlib::Absolutepath                         $log_dir         = '/srv/application-logs/bastionvault',
 
-  Optional[String]                             $tls_cert_source = undef,
+  Optional[String]                             $tls_cert_source  = undef,
   Optional[String]                             $tls_cert_content = undef,
-  Optional[String]                             $tls_key_source  = undef,
-  Optional[Sensitive[String]]                  $tls_key_content = undef,
+  Optional[String]                             $tls_cert_base64  = undef,
+  Optional[String]                             $tls_key_source   = undef,
+  Optional[Sensitive[String]]                  $tls_key_content  = undef,
+  Optional[Variant[Sensitive[String], String]] $tls_key_base64   = undef,
 
   Boolean                                      $tls_self_signed      = true,
   Optional[String[1]]                          $tls_self_signed_cn   = undef,
@@ -136,11 +160,24 @@ class bastionvault (
   Optional[Stdlib::Absolutepath]               $cluster_tls_api_cert     = undef,
   Optional[Stdlib::Absolutepath]               $cluster_tls_api_key      = undef,
 
+  Optional[String]                             $cluster_tls_raft_cert_content = undef,
+  Optional[String]                             $cluster_tls_raft_cert_base64  = undef,
+  Optional[Sensitive[String]]                  $cluster_tls_raft_key_content  = undef,
+  Optional[Variant[Sensitive[String], String]] $cluster_tls_raft_key_base64   = undef,
+
+  Optional[String]                             $cluster_tls_api_cert_content  = undef,
+  Optional[String]                             $cluster_tls_api_cert_base64   = undef,
+  Optional[Sensitive[String]]                  $cluster_tls_api_key_content   = undef,
+  Optional[Variant[Sensitive[String], String]] $cluster_tls_api_key_base64    = undef,
+
   Optional[Stdlib::HTTPSUrl]                   $api_addr        = undef,
   Stdlib::Absolutepath                         $pid_file        = '/var/run/bvault.pid',
 
   Boolean                                      $manage_selinux  = true,
   Boolean                                      $manage_firewall = false,
+
+  Boolean                                      $mount_host_ca_bundle = true,
+  Optional[Stdlib::Absolutepath]               $host_ca_bundle_path  = undef,
 ) {
   # OS gate.
   if $facts['os']['family'] != 'RedHat' {
@@ -188,6 +225,122 @@ class bastionvault (
   # Placeholder secret warning (compile-time, no Sensitive leak).
   if $secret_raft_sensitive.unwrap == 'CHANGE_ME_RAFT' or $secret_api_sensitive.unwrap == 'CHANGE_ME_API_' {
     warning('bastionvault: Raft/API secrets are still set to placeholder values. Set them via Hiera eyaml before production use.')
+  }
+
+  # ---------------------------------------------------------------------------
+  # TLS material resolution.
+  #
+  # For each (cert, key) pair the operator can supply input in any of these
+  # forms (highest precedence first):
+  #   1. *_content  — literal PEM string
+  #   2. *_base64   — base64-encoded PEM (decoded on the agent)
+  #   3. *_source   — Puppet file `source` URI            (listener only)
+  # The resolved `*_pem_effective` variables below are consumed by
+  # `bastionvault::config` to materialise the files; `*_path_effective` is the
+  # in-container path written into config.hcl.
+  # ---------------------------------------------------------------------------
+
+  # Listener cert/key.
+  $tls_cert_pem_effective = $tls_cert_content ? {
+    undef   => $tls_cert_base64 ? {
+      undef   => undef,
+      default => base64('decode', $tls_cert_base64),
+    },
+    default => $tls_cert_content,
+  }
+  $_tls_key_b64_unwrapped = $tls_key_base64 ? {
+    undef     => undef,
+    Sensitive => $tls_key_base64.unwrap,
+    default   => $tls_key_base64,
+  }
+  $tls_key_pem_effective = $tls_key_content ? {
+    undef   => $_tls_key_b64_unwrapped ? {
+      undef   => undef,
+      default => Sensitive(base64('decode', $_tls_key_b64_unwrapped)),
+    },
+    default => $tls_key_content,
+  }
+
+  # Cluster Raft cert/key.
+  $cluster_tls_raft_cert_pem_effective = $cluster_tls_raft_cert_content ? {
+    undef   => $cluster_tls_raft_cert_base64 ? {
+      undef   => undef,
+      default => base64('decode', $cluster_tls_raft_cert_base64),
+    },
+    default => $cluster_tls_raft_cert_content,
+  }
+  $_raft_key_b64_unwrapped = $cluster_tls_raft_key_base64 ? {
+    undef     => undef,
+    Sensitive => $cluster_tls_raft_key_base64.unwrap,
+    default   => $cluster_tls_raft_key_base64,
+  }
+  $cluster_tls_raft_key_pem_effective = $cluster_tls_raft_key_content ? {
+    undef   => $_raft_key_b64_unwrapped ? {
+      undef   => undef,
+      default => Sensitive(base64('decode', $_raft_key_b64_unwrapped)),
+    },
+    default => $cluster_tls_raft_key_content,
+  }
+
+  # Cluster hiqlite API cert/key.
+  $cluster_tls_api_cert_pem_effective = $cluster_tls_api_cert_content ? {
+    undef   => $cluster_tls_api_cert_base64 ? {
+      undef   => undef,
+      default => base64('decode', $cluster_tls_api_cert_base64),
+    },
+    default => $cluster_tls_api_cert_content,
+  }
+  $_api_key_b64_unwrapped = $cluster_tls_api_key_base64 ? {
+    undef     => undef,
+    Sensitive => $cluster_tls_api_key_base64.unwrap,
+    default   => $cluster_tls_api_key_base64,
+  }
+  $cluster_tls_api_key_pem_effective = $cluster_tls_api_key_content ? {
+    undef   => $_api_key_b64_unwrapped ? {
+      undef   => undef,
+      default => Sensitive(base64('decode', $_api_key_b64_unwrapped)),
+    },
+    default => $cluster_tls_api_key_content,
+  }
+
+  # In-container paths to write into config.hcl. Operator-supplied container
+  # path wins; otherwise, if we have content, point at the file we will write
+  # into $tls_dir (mounted at /etc/bvault/tls inside the container).
+  $cluster_tls_raft_cert_path_effective = $cluster_tls_raft_cert ? {
+    undef   => $cluster_tls_raft_cert_pem_effective ? {
+      undef   => undef,
+      default => '/etc/bvault/tls/raft.crt',
+    },
+    default => $cluster_tls_raft_cert,
+  }
+  $cluster_tls_raft_key_path_effective = $cluster_tls_raft_key ? {
+    undef   => $cluster_tls_raft_key_pem_effective ? {
+      undef   => undef,
+      default => '/etc/bvault/tls/raft.key',
+    },
+    default => $cluster_tls_raft_key,
+  }
+  $cluster_tls_api_cert_path_effective = $cluster_tls_api_cert ? {
+    undef   => $cluster_tls_api_cert_pem_effective ? {
+      undef   => undef,
+      default => '/etc/bvault/tls/cluster-api.crt',
+    },
+    default => $cluster_tls_api_cert,
+  }
+  $cluster_tls_api_key_path_effective = $cluster_tls_api_key ? {
+    undef   => $cluster_tls_api_key_pem_effective ? {
+      undef   => undef,
+      default => '/etc/bvault/tls/cluster-api.key',
+    },
+    default => $cluster_tls_api_key,
+  }
+
+  # Effective host CA bundle path. RHEL-family canonical location is the
+  # `update-ca-trust`-managed extracted bundle, which always exists when the
+  # `ca-certificates` package is installed (it is in the EL base).
+  $host_ca_bundle_effective = $host_ca_bundle_path ? {
+    undef   => '/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem',
+    default => $host_ca_bundle_path,
   }
 
   # Effective api_addr if operator did not pin one.

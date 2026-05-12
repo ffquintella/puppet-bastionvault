@@ -21,6 +21,15 @@ Volume=<%= $bastionvault::config_dir %>/config.hcl:/etc/bvault/config.hcl:ro,Z
 Volume=<%= $bastionvault::tls_dir %>:/etc/bvault/tls:ro,Z
 Volume=<%= $bastionvault::data_dir %>:/var/lib/bvault/data:Z
 Volume=<%= $bastionvault::log_dir %>:/var/log/bvault:Z
+<%- if $bastionvault::mount_host_ca_bundle { -%>
+# Host CA trust bundle (auto-detected). Mounted read-only at both the EL
+# canonical path and the Debian-style path so the in-container TLS stack
+# trusts the same roots as the host (corporate CAs from update-ca-trust, etc).
+# `:z` (lowercase) shares the SELinux label since the bundle is read by other
+# host processes; we must not relabel it exclusively to this container.
+Volume=<%= $bastionvault::host_ca_bundle_effective %>:/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem:ro,z
+Volume=<%= $bastionvault::host_ca_bundle_effective %>:/etc/ssl/certs/ca-certificates.crt:ro,z
+<%- } -%>
 Environment=RUST_LOG=<%= $bastionvault::log_level %>
 
 [Service]
