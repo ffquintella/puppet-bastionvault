@@ -44,3 +44,6 @@ Thumbs.db
 .beaker/
 .beaker_history
 .puppet/
+
+# Claude Code local tooling
+.claude/
