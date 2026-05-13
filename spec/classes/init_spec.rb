@@ -193,6 +193,26 @@ describe 'bastionvault' do
         end
       end
 
+      context 'with cluster TLS no_verify on Raft and API' do
+        let(:params) do
+          {
+            mode:                       'ha',
+            node_id:                    1,
+            nodes:                      [
+              { 'id' => 1, 'raft_host' => '10.0.0.11', 'raft_port' => 8210, 'api_host' => '10.0.0.11', 'api_port' => 8220 },
+            ],
+            cluster_tls_raft_no_verify: true,
+            cluster_tls_api_no_verify:  true,
+          }
+        end
+
+        it 'emits both no_verify flags' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{tls_raft_no_verify\s*=\s*true})
+            .with_content(%r{tls_api_no_verify\s*=\s*true})
+        end
+      end
+
       context 'with custom listen_port' do
         let(:params) { { listen_port: 9200 } }
 

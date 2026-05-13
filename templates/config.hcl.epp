@@ -27,6 +27,9 @@ storage "hiqlite" {
 <%-     if $bastionvault::cluster_tls_raft_key_path_effective { -%>
   tls_raft_key  = "<%= $bastionvault::cluster_tls_raft_key_path_effective %>"
 <%-     } -%>
+<%-     if $bastionvault::cluster_tls_raft_no_verify { -%>
+  tls_raft_no_verify = true
+<%-     } -%>
 <%-   } -%>
 <%-   if $bastionvault::cluster_tls_api_disable { -%>
   tls_api_disable = true
@@ -36,6 +39,9 @@ storage "hiqlite" {
 <%-     } -%>
 <%-     if $bastionvault::cluster_tls_api_key_path_effective { -%>
   tls_api_key  = "<%= $bastionvault::cluster_tls_api_key_path_effective %>"
+<%-     } -%>
+<%-     if $bastionvault::cluster_tls_api_no_verify { -%>
+  tls_api_no_verify = true
 <%-     } -%>
 <%-   } -%>
 <%- } -%>

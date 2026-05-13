@@ -119,6 +119,7 @@ diffs.
 | Parameter                         | Type                                      |
 | --------------------------------- | ----------------------------------------- |
 | `cluster_tls_raft_disable`        | `Boolean` (default `false`)               |
+| `cluster_tls_raft_no_verify`      | `Boolean` (default `false`) — skip peer cert verification (`tls_raft_no_verify`) |
 | `cluster_tls_raft_cert_content`   | `Optional[String]`                        |
 | `cluster_tls_raft_cert_base64`    | `Optional[String]`                        |
 | `cluster_tls_raft_key_content`    | `Optional[Sensitive[String]]`             |
@@ -134,6 +135,7 @@ material in yourself.
 ### Cluster hiqlite API parameters (HA only)
 
 Same shape as Raft: `cluster_tls_api_disable`,
+`cluster_tls_api_no_verify`,
 `cluster_tls_api_cert_content`, `cluster_tls_api_cert_base64`,
 `cluster_tls_api_key_content`, `cluster_tls_api_key_base64`,
 `cluster_tls_api_cert`, `cluster_tls_api_key`.

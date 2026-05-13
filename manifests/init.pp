@@ -60,6 +60,11 @@
 # @param nodes                   HA: full peer list.
 # @param cluster_tls_raft_disable Disable TLS on the Raft channel.
 # @param cluster_tls_api_disable  Disable TLS on the hiqlite internal API.
+# @param cluster_tls_raft_no_verify Skip peer certificate verification on the
+#   Raft channel (`tls_raft_no_verify` in config.hcl). Useful when peers use
+#   self-signed certs whose CA isn't yet distributed.
+# @param cluster_tls_api_no_verify  Skip peer certificate verification on the
+#   hiqlite internal API (`tls_api_no_verify` in config.hcl).
 # @param cluster_tls_raft_cert    Optional custom cert path inside the container.
 #   Set this only when you bring your own mount; if you supply cert *content*
 #   via the parameters below the module writes the file for you and points
@@ -161,8 +166,10 @@ class bastionvault (
         api_port  => Stdlib::Port,
   }]]]                                          $nodes           = undef,
 
-  Boolean                                      $cluster_tls_raft_disable = false,
-  Boolean                                      $cluster_tls_api_disable  = false,
+  Boolean                                      $cluster_tls_raft_disable   = false,
+  Boolean                                      $cluster_tls_api_disable    = false,
+  Boolean                                      $cluster_tls_raft_no_verify = false,
+  Boolean                                      $cluster_tls_api_no_verify  = false,
   Optional[Stdlib::Absolutepath]               $cluster_tls_raft_cert    = undef,
   Optional[Stdlib::Absolutepath]               $cluster_tls_raft_key     = undef,
   Optional[Stdlib::Absolutepath]               $cluster_tls_api_cert     = undef,

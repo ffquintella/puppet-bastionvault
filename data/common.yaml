@@ -35,6 +35,8 @@ bastionvault::internal_api_port: 8220
 
 bastionvault::cluster_tls_raft_disable: false
 bastionvault::cluster_tls_api_disable: false
+bastionvault::cluster_tls_raft_no_verify: false
+bastionvault::cluster_tls_api_no_verify: false
 
 bastionvault::pid_file: '/var/run/bvault.pid'
 
