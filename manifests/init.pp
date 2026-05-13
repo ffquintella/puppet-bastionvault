@@ -215,13 +215,16 @@ class bastionvault (
 
   # HA validation.
   #
-  # The checks below guard against a class of bug where hiqlite persists
-  # "<listen_addr>:<port>" into its Raft membership at bootstrap, and on
-  # subsequent restarts re-concatenates the configured port producing a
-  # malformed socket address (e.g. "0.0.0.0:8210:8220"). Any drift between
-  # the cluster-wide port_api/port_raft and the per-node entries — or any
-  # use of 0.0.0.0 as a routable host — is silently catastrophic, so we
-  # refuse to compile rather than let it through.
+  # The checks below guard against the hiqlite malformed-bind bug where
+  # "<listen_addr>:<port>" gets re-concatenated with the configured port on
+  # restart (e.g. "host:8210:8220"). Drift between cluster-wide
+  # port_api/port_raft and per-node entries is silently catastrophic.
+  #
+  # raft_listen_addr is the local *bind* address and is independent of the
+  # membership host published in $nodes[*].raft_host/api_host. 0.0.0.0 is
+  # permitted (and often required under rootless/pasta networking where the
+  # FQDN does not resolve to a bindable interface inside the container);
+  # only the per-node membership hosts must be routable.
   if $mode == 'ha' {
     if $nodes == undef or empty($nodes) {
       fail('bastionvault: $mode is "ha" but $nodes is empty.')
@@ -229,13 +232,6 @@ class bastionvault (
     $_node_ids = $nodes.map |$n| { $n['id'] }
     unless $node_id in $_node_ids {
       fail("bastionvault: \$node_id=${node_id} not present in \$nodes ids ${_node_ids}.")
-    }
-
-    # raft_listen_addr must be a routable host. 0.0.0.0 / :: gets persisted
-    # into the Raft node table and propagates forever — see Node.addr_raft
-    # in BastionVault src/storage/hiqlite/mod.rs.
-    if $raft_listen_addr in ['0.0.0.0', '::', ''] {
-      fail("bastionvault: \$raft_listen_addr=${raft_listen_addr} is not routable in HA mode. Set it to this node's FQDN (the same value used in \$nodes[*].raft_host/api_host).")
     }
 
     # Every node entry must agree with the cluster-wide port assignment.
