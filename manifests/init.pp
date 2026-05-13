@@ -214,6 +214,14 @@ class bastionvault (
   }
 
   # HA validation.
+  #
+  # The checks below guard against a class of bug where hiqlite persists
+  # "<listen_addr>:<port>" into its Raft membership at bootstrap, and on
+  # subsequent restarts re-concatenates the configured port producing a
+  # malformed socket address (e.g. "0.0.0.0:8210:8220"). Any drift between
+  # the cluster-wide port_api/port_raft and the per-node entries — or any
+  # use of 0.0.0.0 as a routable host — is silently catastrophic, so we
+  # refuse to compile rather than let it through.
   if $mode == 'ha' {
     if $nodes == undef or empty($nodes) {
       fail('bastionvault: $mode is "ha" but $nodes is empty.')
@@ -221,6 +229,31 @@ class bastionvault (
     $_node_ids = $nodes.map |$n| { $n['id'] }
     unless $node_id in $_node_ids {
       fail("bastionvault: \$node_id=${node_id} not present in \$nodes ids ${_node_ids}.")
+    }
+
+    # raft_listen_addr must be a routable host. 0.0.0.0 / :: gets persisted
+    # into the Raft node table and propagates forever — see Node.addr_raft
+    # in BastionVault src/storage/hiqlite/mod.rs.
+    if $raft_listen_addr in ['0.0.0.0', '::', ''] {
+      fail("bastionvault: \$raft_listen_addr=${raft_listen_addr} is not routable in HA mode. Set it to this node's FQDN (the same value used in \$nodes[*].raft_host/api_host).")
+    }
+
+    # Every node entry must agree with the cluster-wide port assignment.
+    # hiqlite assumes a uniform port plan; mismatched values produce the
+    # "0.0.0.0:8220:8210" malformed-bind bug on restart.
+    $nodes.each |$n| {
+      if $n['raft_port'] != $raft_port {
+        fail("bastionvault: nodes[id=${n['id']}].raft_port=${n['raft_port']} does not match cluster \$raft_port=${raft_port}. All nodes must use the same Raft port.")
+      }
+      if $n['api_port'] != $internal_api_port {
+        fail("bastionvault: nodes[id=${n['id']}].api_port=${n['api_port']} does not match cluster \$internal_api_port=${internal_api_port}. All nodes must use the same hiqlite API port.")
+      }
+      if $n['raft_host'] in ['0.0.0.0', '::', '', undef] {
+        fail("bastionvault: nodes[id=${n['id']}].raft_host is not a routable host. Use the peer's FQDN.")
+      }
+      if $n['api_host'] in ['0.0.0.0', '::', '', undef] {
+        fail("bastionvault: nodes[id=${n['id']}].api_host is not a routable host. Use the peer's FQDN.")
+      }
     }
   }
 

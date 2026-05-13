@@ -52,12 +52,13 @@ class { 'bastionvault':
 
 ```puppet
 class { 'bastionvault':
-  mode    => 'ha',
-  node_id => 1,
-  nodes   => [
-    { id => 1, raft_host => '10.0.0.11', raft_port => 8210, api_host => '10.0.0.11', api_port => 8220 },
-    { id => 2, raft_host => '10.0.0.12', raft_port => 8210, api_host => '10.0.0.12', api_port => 8220 },
-    { id => 3, raft_host => '10.0.0.13', raft_port => 8210, api_host => '10.0.0.13', api_port => 8220 },
+  mode             => 'ha',
+  node_id          => 1,
+  raft_listen_addr => 'bvault-01.example.com',  # this node's FQDN; must NOT be 0.0.0.0
+  nodes            => [
+    { id => 1, raft_host => 'bvault-01.example.com', raft_port => 8210, api_host => 'bvault-01.example.com', api_port => 8220 },
+    { id => 2, raft_host => 'bvault-02.example.com', raft_port => 8210, api_host => 'bvault-02.example.com', api_port => 8220 },
+    { id => 3, raft_host => 'bvault-03.example.com', raft_port => 8210, api_host => 'bvault-03.example.com', api_port => 8220 },
   ],
   secret_raft => Sensitive(lookup('bastionvault::secret_raft')),
   secret_api  => Sensitive(lookup('bastionvault::secret_api')),
@@ -66,6 +67,17 @@ class { 'bastionvault':
 
 `secret_raft` and `secret_api` MUST be identical on every node. Source
 them from Hiera eyaml or an external secret store.
+
+> **Bootstrap immutability.** hiqlite persists each node's `addr_raft`/`addr_api`
+> (as `<host>:<port>`) into the Raft membership at bootstrap. Changing
+> `raft_port`, `internal_api_port`, `raft_listen_addr`, or any per-node
+> `raft_host`/`api_host`/`raft_port`/`api_port` after the cluster has been
+> bootstrapped produces a malformed bind address on restart (e.g.
+> `0.0.0.0:8210:8220`) and the listeners silently fail to come up. If you
+> need to change any of these values, wipe `data_dir` on every node and
+> rebootstrap. The module enforces uniform ports across `$nodes` and
+> refuses `0.0.0.0` as a routable host to make this class of drift loud
+> at compile time.
 
 ## TLS material
 
