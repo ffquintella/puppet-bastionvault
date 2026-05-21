@@ -156,6 +156,37 @@ class bastionvault::config {
     }
   }
 
+  # Publish a world-readable copy of the serving cert so the `bvault` CLI
+  # (running on the host as any user) can pick it up as a TLS trust anchor
+  # without --tls-skip-verify on every call. The CLI auto-discovers
+  # /etc/bvault/ca.pem; we cannot land it inside the container's TLS dir
+  # because that's bind-mounted read-only.
+  if !$bastionvault::tls_disable and $bastionvault::cli_trust_path != undef {
+    $_cli_trust_path = $bastionvault::cli_trust_path
+    $_cli_trust_dir  = dirname($_cli_trust_path)
+
+    ensure_resource('file', $_cli_trust_dir, {
+        ensure => directory,
+        owner  => 'root',
+        group  => 'root',
+        mode   => '0755',
+    })
+
+    # The source cert is owned by $user:$group and lives in a 0750 directory,
+    # so a plain `file { source => "file://..." }` would race with Puppet's
+    # readability checks when run as root (works) versus an unprivileged agent
+    # (doesn't). Using `install(1)` sidesteps that — root can always read the
+    # source, and the destination is created with explicit ownership/mode.
+    exec { 'bastionvault-publish-cli-trust':
+      command     => "/usr/bin/install -m 0644 -o root -g root ${_cert_path} ${_cli_trust_path}",
+      unless      => "/usr/bin/cmp -s ${_cert_path} ${_cli_trust_path}",
+      path        => ['/usr/bin', '/bin'],
+      require     => [File[$_cli_trust_dir], File[$_cert_path]],
+      subscribe   => File[$_cert_path],
+      refreshonly => false,
+    }
+  }
+
   # Cluster (Raft + hiqlite API) TLS material written from PEM/base64 inputs.
   # These are independent of the listener TLS toggle — HA may run with the
   # listener disabled but cluster TLS enabled (or vice-versa).

@@ -129,6 +129,12 @@ class bastionvault (
   Optional[Array[String[1]]]                   $tls_self_signed_san  = undef,
   Integer[1]                                   $tls_self_signed_days = 825,
 
+  # Host-side path where puppet publishes a world-readable copy of the
+  # serving cert so the `bvault` CLI (running as any host user) can use it
+  # as a TLS trust anchor without --tls-skip-verify on every call. The CLI
+  # auto-discovers this path. Set to `undef` to disable publication.
+  Optional[Stdlib::Absolutepath]               $cli_trust_path       = '/etc/bvault/ca.pem',
+
   String[1]                                    $user            = 'bastionvault',
   String[1]                                    $group           = 'bastionvault',
   Optional[Integer]                            $uid             = undef,
