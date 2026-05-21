@@ -130,10 +130,14 @@ class bastionvault (
   Integer[1]                                   $tls_self_signed_days = 825,
 
   # Host-side path where puppet publishes a world-readable copy of the
-  # serving cert so the `bvault` CLI (running as any host user) can use it
-  # as a TLS trust anchor without --tls-skip-verify on every call. The CLI
-  # auto-discovers this path. Set to `undef` to disable publication.
-  Optional[Stdlib::Absolutepath]               $cli_trust_path       = '/etc/bvault/ca.pem',
+  # serving cert. Useful only for bare-metal `bvault` CLI installs that
+  # read directly from the host filesystem. The default rootless-podman
+  # deployment runs the CLI inside the container via `podman exec` (see
+  # bastionvault::cli), so the host copy is invisible there and the
+  # wrapper instead loads /etc/bvault/tls/server.crt — the bind-mounted
+  # serving cert. Defaults to undef (no publication); set to a path to
+  # opt in.
+  Optional[Stdlib::Absolutepath]               $cli_trust_path       = undef,
 
   String[1]                                    $user            = 'bastionvault',
   String[1]                                    $group           = 'bastionvault',
