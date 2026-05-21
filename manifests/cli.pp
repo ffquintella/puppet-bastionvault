@@ -7,15 +7,19 @@
 #
 # @api private
 class bastionvault::cli {
-  $user  = $bastionvault::user
-  $group = $bastionvault::group
+  $user        = $bastionvault::user
+  $group       = $bastionvault::group
+  $listen_port = $bastionvault::listen_port
 
   file { '/usr/local/bin/bvault':
     ensure  => file,
     owner   => 'root',
     group   => 'root',
     mode    => '0755',
-    content => epp('bastionvault/bvault-wrapper.sh.epp', { 'user' => $user }),
+    content => epp('bastionvault/bvault-wrapper.sh.epp', {
+        'user'        => $user,
+        'listen_port' => $listen_port,
+    }),
   }
 
   # Operator helper: `bvault-ctl status` reports the systemd wrapper unit
