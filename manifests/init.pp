@@ -139,6 +139,14 @@ class bastionvault (
   # opt in.
   Optional[Stdlib::Absolutepath]               $cli_trust_path       = undef,
 
+  # Host-side directory for the bvault CLI's on-disk token helper. The
+  # wrapper bind-mounts this into the container at /etc/bvault/cli-tokens
+  # and sets $BVAULT_TOKEN_FILE per invoking host user, so the token
+  # issued by `bvault login` survives across container restarts and
+  # across podman exec invocations. The directory is created owned by
+  # the container UID/GID so the in-container CLI can write to it.
+  Stdlib::Absolutepath                         $cli_token_dir       = '/srv/application-config/bastionvault/cli-tokens',
+
   String[1]                                    $user            = 'bastionvault',
   String[1]                                    $group           = 'bastionvault',
   Optional[Integer]                            $uid             = undef,

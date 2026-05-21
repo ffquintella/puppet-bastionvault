@@ -11,21 +11,25 @@
 #
 #   * Trust anchor: /etc/bvault/tls/server.crt is bind-mounted ro from the
 #     host's puppet-managed TLS dir; pass it as --ca-cert.
-#   * Address: the in-container server listens on :8200. The host-published
-#     port (commonly 4200) lives in the host netns; from inside the
-#     container, pasta is configured without --map-host-loopback / similar,
-#     so neither the host's loopback nor the FQDN routes back here. The
+#   * Address: the in-container server listens on :8200. Pasta is
+#     configured without host-loopback / map-gw, so neither the host's
+#     loopback nor the FQDN routes back into the container netns. The
 #     only reliable target is the container's own loopback at :8200.
 #   * SAN mismatch: the serving cert is issued for the host FQDN, not for
-#     127.0.0.1, so we hand rustls a separate SNI via --tls-server-name
-#     (BastionVault >= 0.8.3 wires that flag into a URL rewrite + static
-#     resolver so rustls verifies against the SAN while the connection
-#     still lands on loopback). On older CLIs the flag is silently
-#     ignored, in which case operators can override by passing
-#     --tls-skip-verify or --ca-path explicitly.
-#   * $listen_port (= bastionvault::listen_port) isn't used in the address
-#     today, but is kept in the template signature so future deployments
-#     that wire pasta with host-loopback mapping can switch back to
+#     127.0.0.1. We pass the FQDN as --tls-server-name so rustls verifies
+#     against the SAN while the connection still lands on loopback
+#     (requires bvault >= 0.8.3 — older CLIs accept the flag but never
+#     plumb it through, falling back to the SAN-vs-loopback error).
+#   * Token persistence: bvault >= 0.8.6 writes the token issued by
+#     `bvault login` to $BVAULT_TOKEN_FILE on success and reads it back
+#     on subsequent invocations when --client-token / VAULT_TOKEN are
+#     unset. We point it at /etc/bvault/cli-tokens/<host-user>.token, a
+#     bind-mounted directory backed by $cli_token_dir on the host, so
+#     the token survives across container restarts and across podman
+#     exec invocations.
+#   * $listen_port (= bastionvault::listen_port) is unused in the address
+#     today; kept in the template signature so future deployments that
+#     wire pasta with host-loopback mapping can switch back to
 #     <fqdn>:<host_port> without a template signature change.
 TTY_FLAG=
 if [ -t 0 ] && [ -t 1 ]; then TTY_FLAG=-t; fi
@@ -49,8 +53,6 @@ done
 [ -n "${VAULT_CACERT:-}${VAULT_CAPATH:-}${VAULT_SKIP_VERIFY:-}" ]        && inject_ca=0
 [ -n "${VAULT_TLS_SERVER_NAME:-}" ]                                      && inject_sni=0
 
-# Silence the lint for the unused-but-typed param so future maintainers see
-# the intent.
 : "<%= $listen_port %>"
 
 extra=
@@ -61,8 +63,23 @@ if [ "$inject_sni" = 1 ] && [ "$inject_addr" = 1 ]; then
   [ -n "$fqdn" ] && extra="$extra --tls-server-name=$fqdn"
 fi
 
+# Derive the per-host-user token-helper path. SUDO_USER is set by sudo
+# when reachable, LOGNAME otherwise; fall back to "anon" if neither is
+# defined (e.g. service contexts).
+caller=${SUDO_USER:-${LOGNAME:-${USER:-anon}}}
+token_file=/etc/bvault/cli-tokens/${caller}.token
+
+# Pass through token-related env vars so an operator who sets
+# VAULT_TOKEN / BVAULT_TOKEN on the host gets it honored inside the
+# container. Always set BVAULT_TOKEN_FILE so the on-disk helper works
+# even without env wiring.
+podman_env="--env BVAULT_TOKEN_FILE=${token_file}"
+[ -n "${VAULT_TOKEN:-}" ]       && podman_env="$podman_env --env VAULT_TOKEN=$VAULT_TOKEN"
+[ -n "${BVAULT_TOKEN:-}" ]      && podman_env="$podman_env --env BVAULT_TOKEN=$BVAULT_TOKEN"
+[ -n "${BVAULT_TLS_DEBUG:-}" ]  && podman_env="$podman_env --env BVAULT_TLS_DEBUG=$BVAULT_TLS_DEBUG"
+
 # Move to a directory the target user can read, otherwise sudo inherits the
 # caller's cwd (e.g. /root) and the rootless user fails to chdir into it.
 cd / || exit 1
-# shellcheck disable=SC2086  # $extra is intentionally word-split
-exec /usr/bin/sudo -n -u <%= $user %> /usr/bin/podman exec -i $TTY_FLAG bastionvault bvault "$@" $extra
+# shellcheck disable=SC2086  # $extra and $podman_env are intentionally word-split
+exec /usr/bin/sudo -n -u <%= $user %> /usr/bin/podman exec -i $TTY_FLAG $podman_env bastionvault bvault "$@" $extra

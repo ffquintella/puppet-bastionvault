@@ -16,10 +16,24 @@
 #
 # @api private
 class bastionvault::config {
-  $user       = $bastionvault::user
-  $group      = $bastionvault::group
-  $config_dir = $bastionvault::config_dir
-  $tls_dir    = $bastionvault::tls_dir
+  $user           = $bastionvault::user
+  $group          = $bastionvault::group
+  $config_dir     = $bastionvault::config_dir
+  $tls_dir        = $bastionvault::tls_dir
+  $cli_token_dir  = $bastionvault::cli_token_dir
+
+  # Per-user token-helper directory. The CLI inside the container writes
+  # ~/.vault-token equivalents here (path injected via $BVAULT_TOKEN_FILE
+  # by the wrapper) and reads them back on subsequent invocations. Owner
+  # is the host-side bastionvault user (= container UID via UserNS keep-
+  # id), mode 0770 so any host user in the bastionvault group can have
+  # the wrapper drop a token here on their behalf.
+  file { $cli_token_dir:
+    ensure => directory,
+    owner  => $user,
+    group  => $group,
+    mode   => '0770',
+  }
 
   file { "${config_dir}/config.hcl":
     ensure    => file,
