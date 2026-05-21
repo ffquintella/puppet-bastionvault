@@ -1,6 +1,6 @@
 {
   "name": "ffquintella-bastionvault",
-  "version": "0.9.8",
+  "version": "0.9.9",
   "author": "Felipe Quintella",
   "summary": "Install and run BastionVault server rootlessly via Podman Quadlet on EL9/EL10.",
   "description": "Puppet module to install and configure the BastionVault server (Vault-API compatible secrets manager) using rootless Podman with SELinux enforcing and systemd cgroups v2 limits. Supports single-node and HA (hiqlite Raft) topologies. Initialization and unseal are intentionally out of scope and remain a manual operator task.",
