@@ -3,9 +3,52 @@
 # Managed by Puppet — bastionvault module.
 # Re-exec as the rootless service user so we can talk to that user's Podman
 # socket, then run the in-container `bvault` CLI.
+#
+# The CLI runs INSIDE the bastionvault container via `podman exec`, so it
+# sees the container filesystem (not the host's) and the container's
+# loopback. That means:
+#   - The bind-mounted serving cert at /etc/bvault/tls/server.crt is the
+#     natural trust anchor; the host-side /etc/bvault/ca.pem doesn't exist
+#     in this namespace.
+#   - The server listens on :8200 inside; the host-published :4200 doesn't
+#     exist from the container's POV.
+#
+# So unless the operator overrode --address, we point at the container's
+# in-process listener and trust the bind-mounted cert.
 TTY_FLAG=
 if [ -t 0 ] && [ -t 1 ]; then TTY_FLAG=-t; fi
+
+# Inject defaults only if the operator didn't already set them via flag or
+# env. Scan once over the args; honor both --flag=value and --flag value
+# forms.
+inject_addr=1
+inject_ca=1
+inject_sni=1
+for arg in "$@"; do
+  case "$arg" in
+    --address|--address=*)              inject_addr=0 ;;
+    --ca-cert|--ca-cert=*|--ca-path|--ca-path=*|--tls-skip-verify)
+                                        inject_ca=0 ;;
+    --tls-server-name|--tls-server-name=*)
+                                        inject_sni=0 ;;
+  esac
+done
+[ -n "${BVAULT_ADDR:-}${VAULT_ADDR:-}" ]                                 && inject_addr=0
+[ -n "${VAULT_CACERT:-}${VAULT_CAPATH:-}${VAULT_SKIP_VERIFY:-}" ]        && inject_ca=0
+[ -n "${VAULT_TLS_SERVER_NAME:-}" ]                                      && inject_sni=0
+
+# Build the suffix of injected args. Values are flag forms with no spaces,
+# so the trailing unquoted expansion below is safe.
+extra=
+[ "$inject_addr" = 1 ] && extra="$extra --address=https://127.0.0.1:8200"
+[ "$inject_ca"   = 1 ] && extra="$extra --ca-cert=/etc/bvault/tls/server.crt"
+if [ "$inject_sni" = 1 ] && [ "$inject_addr" = 1 ]; then
+  fqdn=$(hostname -f 2>/dev/null || hostname 2>/dev/null)
+  [ -n "$fqdn" ] && extra="$extra --tls-server-name=$fqdn"
+fi
+
 # Move to a directory the target user can read, otherwise sudo inherits the
 # caller's cwd (e.g. /root) and the rootless user fails to chdir into it.
 cd / || exit 1
-exec /usr/bin/sudo -n -u <%= $user %> /usr/bin/podman exec -i $TTY_FLAG bastionvault bvault "$@"
+# shellcheck disable=SC2086  # $extra is intentionally word-split
+exec /usr/bin/sudo -n -u <%= $user %> /usr/bin/podman exec -i $TTY_FLAG bastionvault bvault "$@" $extra
