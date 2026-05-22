@@ -58,6 +58,50 @@ case "${1:-}" in
   ''|-h|--help|-V|--version|help)
     inject_addr=0; inject_ca=0; inject_sni=0 ;;
 esac
+
+# bvault has nested command groups (operator/cluster/auth/policy/secrets/
+# exchange/rustion at the top, plus `rustion master`, `rustion target`,
+# `operator cloud-target` one level down) whose group structs do NOT
+# accept the HTTP flags — only their leaf subcommands do. So `bvault
+# operator` alone, or `bvault rustion master` alone, fails with
+# "unexpected argument '--address' found" when we append the flags.
+# Walk the user's positional args and skip injection when we land on a
+# group without descending to a leaf.
+_walk_depth=0
+_walk_group=""
+_walk_skip=0
+for _arg in "$@"; do
+  case "$_arg" in -*) continue ;; esac
+  case "$_walk_depth" in
+    0)
+      case "$_arg" in
+        operator|cluster|auth|policy|secrets|exchange|rustion)
+          _walk_depth=1; _walk_group="$_arg" ;;
+        *) _walk_skip=2; break ;;
+      esac ;;
+    1)
+      case "$_walk_group" in
+        rustion)
+          case "$_arg" in
+            master|target) _walk_depth=2 ;;
+            *)             _walk_skip=2; break ;;
+          esac ;;
+        operator)
+          case "$_arg" in
+            cloud-target) _walk_depth=2 ;;
+            *)            _walk_skip=2; break ;;
+          esac ;;
+        *) _walk_skip=2; break ;;
+      esac ;;
+    *) _walk_skip=2; break ;;
+  esac
+done
+# _walk_skip stays 0 only when the loop ended *inside* a group (no leaf
+# was seen) — in that case suppress injection.
+if [ "$_walk_skip" -eq 0 ] && [ "$_walk_depth" -ge 1 ]; then
+  inject_addr=0; inject_ca=0; inject_sni=0
+fi
+unset _walk_depth _walk_group _walk_skip _arg
 [ -n "${BVAULT_ADDR:-}${VAULT_ADDR:-}" ]                                 && inject_addr=0
 [ -n "${VAULT_CACERT:-}${VAULT_CAPATH:-}${VAULT_SKIP_VERIFY:-}" ]        && inject_ca=0
 [ -n "${VAULT_TLS_SERVER_NAME:-}" ]                                      && inject_sni=0
