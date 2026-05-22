@@ -1,39 +1,61 @@
-<%- | Stdlib::Absolutepath $script_path,
-      Stdlib::Absolutepath $cli_token_dir,
+<%- | String[1]            $user,
+      Stdlib::Absolutepath $in_container_script,
 | -%>
 #!/bin/sh
 # Managed by Puppet — bastionvault module.
-# Thin wrapper around rustion-master-bootstrap.sh.
+# Wrapper around the in-container rustion-master-bootstrap.sh.
 #
-# The script itself shells out to `bvault` for every Vault API call. On
-# this host `bvault` is the rootless-podman wrapper installed by
-# bastionvault::cli at /usr/local/bin/bvault, which already injects
-# --address, --ca-cert and --tls-server-name and persists the issued
-# token under <%= $cli_token_dir %>/<host-user>.token via
-# BVAULT_TOKEN_FILE. So all we need to do here is:
+# The script lives inside the bastionvault image at
+# <%= $in_container_script %>. We invoke it via `podman exec` against the
+# running container, mirroring how /usr/local/bin/bvault works:
 #
-#   * Make sure /usr/local/bin is on PATH (cron / non-login shells often
-#     have a stripped PATH that omits it).
-#   * Honor BVAULT_ADDR / BVAULT_TOKEN as aliases for VAULT_ADDR /
-#     VAULT_TOKEN — mirrors the script's own preflight, but doing it here
-#     too means an operator can `export BVAULT_TOKEN=...` and have it
-#     reach the in-container CLI via the bvault wrapper's --env plumbing.
-#   * exec the vendored script with the operator's args untouched.
+#   1. sudo to the rootless service user (<%= $user %>) so we can reach
+#      its podman socket.
+#   2. Inject the same TLS / address env vars that the host bvault
+#      wrapper normally injects as flags. The in-container bvault honors
+#      VAULT_ADDR / VAULT_CACERT / VAULT_TLS_SERVER_NAME directly, so
+#      every `bvault <subcommand>` call the script makes resolves
+#      against the local listener with the right SAN and trust anchor.
+#   3. Pass through VAULT_TOKEN / BVAULT_TOKEN if the operator has them
+#      in their host environment, and set BVAULT_TOKEN_FILE per host
+#      user so the token issued by `bvault login` (persisted on the
+#      shared cli-tokens volume) is picked up automatically.
 #
-# Prereqs (operator's responsibility, same as running the script by hand):
-#   * bvault login    # once per host user, populates the token helper
+# Prereqs (operator's responsibility, same as `bvault` on the host):
+#   bvault login                       # populates the per-user token file
 #   OR
-#   * export VAULT_TOKEN=...  (or BVAULT_TOKEN=...)
+#   export VAULT_TOKEN=...             # (or BVAULT_TOKEN=...)
 set -eu
 
-PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
-export PATH
+TTY_FLAG=
+if [ -t 0 ] && [ -t 1 ]; then TTY_FLAG=-t; fi
 
-if [ -z "${VAULT_ADDR:-}" ] && [ -n "${BVAULT_ADDR:-}" ]; then
-  export VAULT_ADDR="$BVAULT_ADDR"
-fi
-if [ -z "${VAULT_TOKEN:-}" ] && [ -n "${BVAULT_TOKEN:-}" ]; then
-  export VAULT_TOKEN="$BVAULT_TOKEN"
-fi
+# Derive the per-host-user token-helper path (matches bvault wrapper).
+caller=${SUDO_USER:-${LOGNAME:-${USER:-anon}}}
+token_file=/etc/bvault/cli-tokens/${caller}.token
 
-exec <%= $script_path %> "$@"
+# SNI for the SAN-vs-loopback mismatch — the cert is issued for the
+# host FQDN, the connection lands on 127.0.0.1.
+fqdn=$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo localhost)
+
+podman_env="--env VAULT_ADDR=https://127.0.0.1:8200"
+podman_env="$podman_env --env VAULT_CACERT=/etc/bvault/tls/server.crt"
+podman_env="$podman_env --env VAULT_TLS_SERVER_NAME=${fqdn}"
+podman_env="$podman_env --env BVAULT_TOKEN_FILE=${token_file}"
+[ -n "${VAULT_TOKEN:-}"       ] && podman_env="$podman_env --env VAULT_TOKEN=$VAULT_TOKEN"
+[ -n "${BVAULT_TOKEN:-}"      ] && podman_env="$podman_env --env BVAULT_TOKEN=$BVAULT_TOKEN"
+[ -n "${BVAULT_ADDR:-}"       ] && podman_env="$podman_env --env BVAULT_ADDR=$BVAULT_ADDR"
+[ -n "${BVAULT_TLS_DEBUG:-}"  ] && podman_env="$podman_env --env BVAULT_TLS_DEBUG=$BVAULT_TLS_DEBUG"
+
+# cd to a dir the rootless user can read; otherwise sudo inherits the
+# caller's cwd (e.g. /root) and the chdir fails.
+cd / || exit 1
+
+# Override the image ENTRYPOINT (= /usr/local/bin/bvault) so the exec
+# runs the script through /bin/sh, not the bvault binary. Requires the
+# image to be built with INCLUDE_SHELL=1 so /bin/sh exists.
+# shellcheck disable=SC2086  # $podman_env is intentionally word-split
+exec /usr/bin/sudo -n -u <%= $user %> /usr/bin/podman exec \
+  -i $TTY_FLAG $podman_env \
+  bastionvault \
+  /bin/sh <%= $in_container_script %> "$@"
