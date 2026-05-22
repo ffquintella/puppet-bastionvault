@@ -1,0 +1,39 @@
+<%- | Stdlib::Absolutepath $script_path,
+      Stdlib::Absolutepath $cli_token_dir,
+| -%>
+#!/bin/sh
+# Managed by Puppet — bastionvault module.
+# Thin wrapper around rustion-master-bootstrap.sh.
+#
+# The script itself shells out to `bvault` for every Vault API call. On
+# this host `bvault` is the rootless-podman wrapper installed by
+# bastionvault::cli at /usr/local/bin/bvault, which already injects
+# --address, --ca-cert and --tls-server-name and persists the issued
+# token under <%= $cli_token_dir %>/<host-user>.token via
+# BVAULT_TOKEN_FILE. So all we need to do here is:
+#
+#   * Make sure /usr/local/bin is on PATH (cron / non-login shells often
+#     have a stripped PATH that omits it).
+#   * Honor BVAULT_ADDR / BVAULT_TOKEN as aliases for VAULT_ADDR /
+#     VAULT_TOKEN — mirrors the script's own preflight, but doing it here
+#     too means an operator can `export BVAULT_TOKEN=...` and have it
+#     reach the in-container CLI via the bvault wrapper's --env plumbing.
+#   * exec the vendored script with the operator's args untouched.
+#
+# Prereqs (operator's responsibility, same as running the script by hand):
+#   * bvault login    # once per host user, populates the token helper
+#   OR
+#   * export VAULT_TOKEN=...  (or BVAULT_TOKEN=...)
+set -eu
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
+export PATH
+
+if [ -z "${VAULT_ADDR:-}" ] && [ -n "${BVAULT_ADDR:-}" ]; then
+  export VAULT_ADDR="$BVAULT_ADDR"
+fi
+if [ -z "${VAULT_TOKEN:-}" ] && [ -n "${BVAULT_TOKEN:-}" ]; then
+  export VAULT_TOKEN="$BVAULT_TOKEN"
+fi
+
+exec <%= $script_path %> "$@"
