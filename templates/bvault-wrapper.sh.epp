@@ -49,6 +49,15 @@ for arg in "$@"; do
                                         inject_sni=0 ;;
   esac
 done
+
+# The injected flags are subcommand-scoped in bvault >= 0.8.7; appending them
+# when the operator ran `bvault` bare, `bvault --help`, or `bvault --version`
+# makes clap reject the line with "unexpected argument '--address' found".
+# Skip injection unless we can see a subcommand on the command line.
+case "${1:-}" in
+  ''|-h|--help|-V|--version|help)
+    inject_addr=0; inject_ca=0; inject_sni=0 ;;
+esac
 [ -n "${BVAULT_ADDR:-}${VAULT_ADDR:-}" ]                                 && inject_addr=0
 [ -n "${VAULT_CACERT:-}${VAULT_CAPATH:-}${VAULT_SKIP_VERIFY:-}" ]        && inject_ca=0
 [ -n "${VAULT_TLS_SERVER_NAME:-}" ]                                      && inject_sni=0
