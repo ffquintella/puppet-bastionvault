@@ -60,13 +60,28 @@ class bastionvault::user {
   # Manage the immediate parents so they get a sane mode (root:root 0755)
   # rather than mkdir's default umask. Idempotent + tolerates parents that
   # overlap with each other or with $home.
+  #
+  # The standard /srv/application-* roots are owned by the baseapp module
+  # (ffquintella-baseapp). Declaring them here as well triggers a duplicate
+  # File[...] declaration on any node that also includes baseapp (e.g. via the
+  # ferrogate module), so skip the baseapp roots and let baseapp own them. The
+  # `mkdir -p` exec above still guarantees they exist on standalone nodes.
+  $_baseapp_roots = [
+    '/srv',
+    '/srv/scripts',
+    '/srv/application-config',
+    '/srv/application-data',
+    '/srv/application-logs',
+  ]
   [dirname($data_dir), dirname($config_dir), dirname($log_dir)].unique.each |$_parent| {
-    ensure_resource('file', $_parent, {
-        'ensure' => 'directory',
-        'owner'  => 'root',
-        'group'  => 'root',
-        'mode'   => '0755',
-    })
+    unless $_parent in $_baseapp_roots {
+      ensure_resource('file', $_parent, {
+          'ensure' => 'directory',
+          'owner'  => 'root',
+          'group'  => 'root',
+          'mode'   => '0755',
+      })
+    }
   }
 
   # Host-side bind mount targets. The mkdir exec above guarantees they exist;
