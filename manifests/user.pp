@@ -4,7 +4,10 @@
 # the user instance starts at boot without interactive login, and pre-
 # creates the host directories that get bind-mounted into the container.
 #
-# subuid/subgid entries are left to useradd defaults on EL9/EL10.
+# system users are NOT auto-allocated subordinate IDs by useradd, so this
+# class explicitly provisions /etc/subuid and /etc/subgid ranges for the
+# user via puppet/podman's podman::subuid / podman::subgid defined types
+# (rootless podman requires them to build the user namespace).
 #
 # @api private
 class bastionvault::user {
