@@ -53,12 +53,14 @@ class bastionvault::service {
     # Reload the user systemd manager so it picks up the Quadlet generator.
     exec { 'bastionvault-user-daemon-reload':
       command     => "${runas} /usr/bin/systemctl --user daemon-reload",
+      cwd         => $home,
       refreshonly => true,
       notify      => Exec['bastionvault-user-restart'],
     }
 
     exec { 'bastionvault-user-restart':
       command     => "${runas} /usr/bin/systemctl --user restart bastionvault.service",
+      cwd         => $home,
       refreshonly => true,
     }
 
@@ -68,6 +70,7 @@ class bastionvault::service {
     exec { 'bastionvault-user-start':
       command => "${runas} /usr/bin/systemctl --user start bastionvault.service",
       unless  => "${runas} /usr/bin/systemctl --user is-active bastionvault.service",
+      cwd     => $home,
       require => [
         File[$unit_path],
         Exec['bastionvault-user-daemon-reload'],
