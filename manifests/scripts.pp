@@ -16,12 +16,16 @@ class bastionvault::scripts {
   $scripts_dir  = '/srv/scripts/bastionvault'
   $wrapper_path = "${scripts_dir}/rustion-master-bootstrap"
 
-  ensure_resource('file', '/srv/scripts', {
-      ensure => directory,
-      owner  => 'root',
-      group  => 'root',
-      mode   => '0755',
-  })
+  # /srv/scripts is a baseapp root (ffquintella-baseapp owns it). Declaring it
+  # here as well triggers a duplicate File[/srv/scripts] on any node that also
+  # includes baseapp (e.g. via the ferrogate module). Use a mkdir -p exec to
+  # guarantee the parent exists on standalone nodes — idempotent via `creates`,
+  # and a no-op when baseapp has already created it — and let baseapp own it.
+  exec { "bastionvault-mkdir-${scripts_dir}":
+    command => "/usr/bin/mkdir -p ${scripts_dir}",
+    creates => $scripts_dir,
+    before  => File[$scripts_dir],
+  }
 
   file { $scripts_dir:
     ensure => directory,
