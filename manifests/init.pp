@@ -422,6 +422,14 @@ class bastionvault (
     warning("bastionvault: \$listen_port=${listen_port} is privileged. Rootless Podman needs net.ipv4.ip_unprivileged_port_start lowered or use a reverse proxy.")
   }
 
+  # baseapp owns the shared /srv/application-* roots as root:root 0755, so any
+  # app user can traverse into its own (app-owned) subdirectory. Including it
+  # here (rather than re-declaring the roots ourselves) keeps a single owner of
+  # those roots and works whether or not another app module (e.g. ferrogate)
+  # also pulls baseapp in. It must run before bastionvault::user, which creates
+  # the bastionvault subdirs beneath the roots.
+  contain baseapp
+
   contain bastionvault::install
   contain bastionvault::user
   contain bastionvault::selinux
@@ -432,7 +440,8 @@ class bastionvault (
   contain bastionvault::cli
   contain bastionvault::scripts
 
-  Class['bastionvault::install']
+  Class['baseapp']
+  -> Class['bastionvault::install']
   -> Class['bastionvault::user']
   -> Class['bastionvault::selinux']
   -> Class['bastionvault::config']

@@ -65,10 +65,12 @@ class bastionvault::user {
   # overlap with each other or with $home.
   #
   # The standard /srv/application-* roots are owned by the baseapp module
-  # (ffquintella-baseapp). Declaring them here as well triggers a duplicate
-  # File[...] declaration on any node that also includes baseapp (e.g. via the
-  # ferrogate module), so skip the baseapp roots and let baseapp own them. The
-  # `mkdir -p` exec above still guarantees they exist on standalone nodes.
+  # (ffquintella-baseapp), which bastionvault::init contains and orders ahead of
+  # this class — they exist as root:root 0755 (world-traversable) before we run.
+  # Declaring them here as well would trigger a duplicate File[...] declaration
+  # on any node that also includes baseapp (e.g. via the ferrogate module), so
+  # skip the baseapp roots and let baseapp own them. The `mkdir -p` exec above
+  # still guarantees they exist as a fallback.
   $_baseapp_roots = [
     '/srv',
     '/srv/scripts',

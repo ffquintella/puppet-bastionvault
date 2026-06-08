@@ -345,6 +345,12 @@ module's user-instance support, or an explicit guarded `exec`.
 - Pre-create `$data_dir`, `$config_dir`, `$tls_dir` with `0750`, owner
   `$user:$group`. The container's UID 65532 reaches them via the user
   namespace map — no host-side chown to 65532 needed for rootless.
+- The shared `/srv/application-{config,data,logs}` roots are owned by the
+  `baseapp` module as `root:root 0755` (world-traversable) so `$user` can
+  traverse into its own `0750` subdir. `baseapp` is `contain`ed and ordered
+  ahead of `bastionvault::user`. Do **not** let any app module re-own these
+  roots as `<app>:<app> 0750` — that locks every *other* app user out of its
+  own subdir (`statfs: permission denied` at container start).
 - `XDG_RUNTIME_DIR=/run/user/<uid>` exported for any `podman` exec resources.
 
 ---

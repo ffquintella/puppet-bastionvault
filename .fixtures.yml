@@ -10,5 +10,7 @@ fixtures:
     systemd:
       repo: 'puppet/systemd'
       ref:  '8.1.0'
+    baseapp:
+      repo: 'ffquintella/baseapp'
   symlinks:
     bastionvault: "#{source_dir}"

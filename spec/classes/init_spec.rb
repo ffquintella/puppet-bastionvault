@@ -17,6 +17,7 @@ end
 if catalog_harness == :regent
   describe 'bastionvault' do
     it { is_expected.to compile }
+    it { is_expected.to contain_class('baseapp') }
     it { is_expected.to contain_class('bastionvault::install') }
     it { is_expected.to contain_class('bastionvault::user') }
     it { is_expected.to contain_class('bastionvault::selinux') }
