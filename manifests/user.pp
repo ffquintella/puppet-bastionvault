@@ -5,9 +5,10 @@
 # creates the host directories that get bind-mounted into the container.
 #
 # system users are NOT auto-allocated subordinate IDs by useradd, so this
-# class explicitly provisions /etc/subuid and /etc/subgid ranges for the
-# user via puppet/podman's podman::subuid / podman::subgid defined types
-# (rootless podman requires them to build the user namespace).
+# class provisions /etc/subuid and /etc/subgid ranges for the user via
+# baseapp::subid (rootless podman requires them to build the user namespace).
+# baseapp owns those files as concat targets — the single, node-wide authority
+# shared with any other rootless app module (e.g. ferrogate).
 #
 # @api private
 class bastionvault::user {
@@ -131,18 +132,17 @@ class bastionvault::user {
 
   # Subordinate UID/GID ranges. System users are NOT auto-allocated subids by
   # useradd, but rootless podman requires them to set up the user namespace.
-  # We use the puppet/podman defined types so the entries become fragments of
-  # the concat-managed /etc/subuid and /etc/subgid (rather than fighting the
-  # concat with a raw append). This requires `include podman` to be active in
-  # the catalog so the Concat targets exist.
-  podman::subuid { $user:
-    subuid  => $bastionvault::subid_start,
-    count   => $bastionvault::subid_count,
-    require => User[$user],
-  }
-
-  podman::subgid { $user:
-    subgid  => $bastionvault::subid_start,
+  # We register the range through baseapp::subid, which owns /etc/subuid and
+  # /etc/subgid as concat targets — the single, node-wide authority for those
+  # files. This lets bastionvault coexist with other rootless apps (e.g.
+  # ferrogate) that register the same way, instead of fighting over the files.
+  # baseapp is already declared (and contained) by bastionvault::init.
+  #
+  # NOTE: baseapp must be the only manager of these files. If the puppet/podman
+  # module is also on the node, leave its `manage_subuid => false` (the default)
+  # so it does not declare a competing Concat['/etc/subuid'].
+  baseapp::subid { $user:
+    subid   => $bastionvault::subid_start,
     count   => $bastionvault::subid_count,
     require => User[$user],
   }

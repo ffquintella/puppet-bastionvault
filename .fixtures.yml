@@ -4,6 +4,7 @@ fixtures:
     stdlib:
       repo: 'puppetlabs/stdlib'
       ref:  '9.6.0'
+    concat: 'puppetlabs/concat'
     selinux:
       repo: 'puppet/selinux'
       ref:  '5.0.0'

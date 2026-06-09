@@ -35,9 +35,12 @@ class bastionvault::service {
       command => "${runas} /bin/sh -c '/usr/bin/podman system migrate && /usr/bin/touch ${_migrate_flag}'",
       creates => $_migrate_flag,
       cwd     => $home,
+      # The subuid/subgid files must be fully written before podman reads the
+      # ranges into the user's container storage. baseapp::subid owns those
+      # concat targets, so depend on the built files (Concat[...]) directly.
       require => [
-        Podman::Subuid[$user],
-        Podman::Subgid[$user],
+        Concat['/etc/subuid'],
+        Concat['/etc/subgid'],
       ],
     }
 
