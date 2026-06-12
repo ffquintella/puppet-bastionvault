@@ -46,7 +46,9 @@
 # @param cpu_quota       systemd CPUQuota for the user slice drop-in.
 # @param tasks_max       systemd TasksMax for the user slice drop-in.
 # @param io_weight       systemd IOWeight for the user slice drop-in.
-# @param log_level       BastionVault log level.
+# @param log_level       BastionVault log level. A plain level (e.g. 'info') or a
+#                        RUST_LOG-style directive list with per-target filters
+#                        (e.g. 'info,hiqlite=warn').
 # @param log_to_stderr   Mirror operations/security logs to stderr in addition to the on-disk files.
 # @param log_rotate_size_mb Per-file rotation threshold in MiB. 0 = use server default (100).
 # @param log_rotate_keep    Number of rotated copies kept per stream. 0 = use server default (5).
@@ -163,7 +165,7 @@ class bastionvault (
   Integer                                      $tasks_max       = 4096,
   Integer                                      $io_weight       = 100,
 
-  Enum['trace','debug','info','warn','error']  $log_level       = 'info',
+  Pattern[/\A([A-Za-z0-9_:.*-]+=)?(trace|debug|info|warn|error|off)(,([A-Za-z0-9_:.*-]+=)?(trace|debug|info|warn|error|off))*\z/] $log_level = 'info',
   Boolean                                      $log_to_stderr      = true,
   Integer[0]                                   $log_rotate_size_mb = 0,
   Integer[0]                                   $log_rotate_keep    = 0,
