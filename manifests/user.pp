@@ -21,6 +21,7 @@ class bastionvault::user {
   $config_dir = $bastionvault::config_dir
   $tls_dir    = $bastionvault::tls_dir
   $log_dir    = $bastionvault::log_dir
+  $backup_dir = $bastionvault::backup_dir
 
   group { $group:
     ensure => present,
@@ -53,7 +54,7 @@ class bastionvault::user {
   # take over ownership/mode management. `mkdir -p` is a no-op when the dirs
   # already exist (idempotent via `creates`) and tolerates arbitrarily deep
   # parent paths if an operator overrides $data_dir / $config_dir / $log_dir.
-  [$data_dir, $config_dir, $tls_dir, $log_dir].each |$_dir| {
+  [$data_dir, $config_dir, $tls_dir, $log_dir, $backup_dir].each |$_dir| {
     exec { "bastionvault-mkdir-${_dir}":
       command => "/usr/bin/mkdir -p ${_dir}",
       creates => $_dir,
@@ -100,7 +101,7 @@ class bastionvault::user {
     require => User[$user],
   }
 
-  file { $data_dir:
+  file { [$data_dir, $backup_dir]:
     ensure  => directory,
     owner   => $user,
     group   => $group,
@@ -112,7 +113,7 @@ class bastionvault::user {
   # the old /var/lib/bastionvault/data path, or files seeded by an operator
   # before Puppet ran). The `find` guard makes this a no-op once everything is
   # already owned by ${user}:${group}, so it does not chown on every run.
-  [$data_dir, $config_dir, $tls_dir, $log_dir].each |$_dir| {
+  [$data_dir, $config_dir, $tls_dir, $log_dir, $backup_dir].each |$_dir| {
     exec { "bastionvault-chown-${_dir}":
       command => "/usr/bin/chown -R ${user}:${group} ${_dir}",
       onlyif  => "/usr/bin/find ${_dir} \\( ! -user ${user} -o ! -group ${group} \\) -print -quit | /usr/bin/grep -q .",

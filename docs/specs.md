@@ -42,6 +42,7 @@ From `deploy/container/Containerfile`:
 - Config path inside container: `/etc/bvault/config.hcl`.
 - TLS material expected under `/etc/bvault/tls/`.
 - Data volume: `/var/lib/bvault/data` (declared `VOLUME`).
+- Backup volume: `/backups` (host `$backup_dir`, default under the data root).
 - Working directory: `/var/lib/bvault`.
 - Default container `EXPOSE` is `8200`; the product default for the API
   listener is `8200`. **This module defaults the host-facing API port to
@@ -161,6 +162,7 @@ class bastionvault (
   Stdlib::Absolutepath        $config_dir      = '/srv/application-config/bastionvault',
   Stdlib::Absolutepath        $tls_dir         = '/srv/application-config/bastionvault/tls',
   Stdlib::Absolutepath        $log_dir         = '/srv/application-logs/bastionvault',
+  Stdlib::Absolutepath        $backup_dir      = '/srv/application-data/bastionvault/backups',
 
   # --- TLS material (operator-supplied) ---
   # Listener cert/key. Precedence: *_content > *_base64 > *_source > self-signed.
@@ -314,6 +316,7 @@ PublishPort=<%= $listen_port %>:<%= $container_port %>
 Volume=<%= $config_dir %>/config.hcl:/etc/bvault/config.hcl:ro,Z
 Volume=<%= $tls_dir %>:/etc/bvault/tls:ro,Z
 Volume=<%= $data_dir %>:/var/lib/bvault/data:Z
+Volume=<%= $backup_dir %>:/backups:Z
 Environment=RUST_LOG=<%= $log_level %>
 HealthCmd=/usr/local/bin/bvault status || exit 1
 HealthInterval=30s

@@ -17,6 +17,7 @@
 # @param config_dir      Host path for the rendered config.hcl.
 # @param tls_dir         Host path for TLS material.
 # @param log_dir         Host path bind-mounted into the container at /var/log/bvault.
+# @param backup_dir      Host path bind-mounted into the container at /backups.
 # @param tls_cert_source Optional Puppet `source` URI for the TLS cert file.
 # @param tls_cert_content Optional literal PEM content for the TLS cert file.
 # @param tls_cert_base64 Optional base64-encoded PEM cert. Decoded on the
@@ -118,6 +119,7 @@ class bastionvault (
   Stdlib::Absolutepath                         $config_dir      = '/srv/application-config/bastionvault',
   Stdlib::Absolutepath                         $tls_dir         = '/srv/application-config/bastionvault/tls',
   Stdlib::Absolutepath                         $log_dir         = '/srv/application-logs/bastionvault',
+  Stdlib::Absolutepath                         $backup_dir      = '/srv/application-data/bastionvault/backups',
 
   Optional[String]                             $tls_cert_source  = undef,
   Optional[String]                             $tls_cert_content = undef,

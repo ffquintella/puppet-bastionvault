@@ -21,6 +21,7 @@ Volume=<%= $bastionvault::config_dir %>/config.hcl:/etc/bvault/config.hcl:ro,Z
 Volume=<%= $bastionvault::tls_dir %>:/etc/bvault/tls:ro,Z
 Volume=<%= $bastionvault::data_dir %>:/var/lib/bvault/data:Z
 Volume=<%= $bastionvault::log_dir %>:/var/log/bvault:Z
+Volume=<%= $bastionvault::backup_dir %>:/backups:Z
 # Per-host-user CLI token helper directory. The wrapper sets
 # $BVAULT_TOKEN_FILE=/etc/bvault/cli-tokens/<user>.token so `bvault login`
 # persists its issued token here (writable from inside the container) and

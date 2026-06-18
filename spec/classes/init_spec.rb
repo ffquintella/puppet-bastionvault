@@ -54,6 +54,21 @@ describe 'bastionvault' do
           ).with_content(%r{PublishPort=4200:8200})
         end
 
+        it 'creates the host backup directory owned by the service user' do
+          is_expected.to contain_file('/srv/application-data/bastionvault/backups').with(
+            'ensure' => 'directory',
+            'owner'  => 'bastionvault',
+            'group'  => 'bastionvault',
+            'mode'   => '0750',
+          )
+        end
+
+        it 'bind-mounts the backup directory at /backups inside the container' do
+          is_expected.to contain_file(
+            '/var/lib/bastionvault/.config/containers/systemd/bastionvault.container',
+          ).with_content(%r{Volume=/srv/application-data/bastionvault/backups:/backups:Z})
+        end
+
         it 'renders config.hcl with single-node hiqlite block' do
           is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl').with_content(
             %r{storage "hiqlite"},

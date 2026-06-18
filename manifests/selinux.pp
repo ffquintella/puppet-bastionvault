@@ -19,6 +19,7 @@ class bastionvault::selinux {
     'bastionvault-config' => $bastionvault::config_dir,
     'bastionvault-tls'    => $bastionvault::tls_dir,
     'bastionvault-logs'   => $bastionvault::log_dir,
+    'bastionvault-backup' => $bastionvault::backup_dir,
   }
 
   $paths.each |$title, $path| {
