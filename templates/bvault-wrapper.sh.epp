@@ -1,5 +1,5 @@
 <%- | String[1]    $user,
-      Stdlib::Port $listen_port,
+      Stdlib::Port $service_port,
 | -%>
 #!/bin/sh
 # Managed by Puppet — bastionvault module.
@@ -11,10 +11,14 @@
 #
 #   * Trust anchor: /etc/bvault/tls/server.crt is bind-mounted ro from the
 #     host's puppet-managed TLS dir; pass it as --ca-cert.
-#   * Address: the in-container server listens on :8200. Pasta is
-#     configured without host-loopback / map-gw, so neither the host's
-#     loopback nor the FQDN routes back into the container netns. The
-#     only reliable target is the container's own loopback at :8200.
+#   * Address: the in-container server listens on :$service_port. Under
+#     the default host-networking mode the container shares the host
+#     netns, so this `podman exec` lands on the same loopback the server
+#     binds. Under the legacy pasta/slirp4netns modes pasta is configured
+#     without host-loopback / map-gw, so neither the host's loopback nor
+#     the FQDN routes back into the container netns — but the exec runs
+#     inside that netns, so the container's own loopback at :$service_port
+#     is reachable in both cases.
 #   * SAN mismatch: the serving cert is issued for the host FQDN, not for
 #     127.0.0.1. We pass the FQDN as --tls-server-name so rustls verifies
 #     against the SAN while the connection still lands on loopback
@@ -27,10 +31,10 @@
 #     bind-mounted directory backed by $cli_token_dir on the host, so
 #     the token survives across container restarts and across podman
 #     exec invocations.
-#   * $listen_port (= bastionvault::listen_port) is unused in the address
-#     today; kept in the template signature so future deployments that
-#     wire pasta with host-loopback mapping can switch back to
-#     <fqdn>:<host_port> without a template signature change.
+#   * $service_port (= bastionvault::service_port) is the port the
+#     in-container listener binds: $listen_port under host networking,
+#     $container_port under pasta/slirp4netns. The exec always targets
+#     the container's loopback on that port.
 TTY_FLAG=
 if [ -t 0 ] && [ -t 1 ]; then TTY_FLAG=-t; fi
 
@@ -106,10 +110,10 @@ unset _walk_depth _walk_group _walk_skip _arg
 [ -n "${VAULT_CACERT:-}${VAULT_CAPATH:-}${VAULT_SKIP_VERIFY:-}" ]        && inject_ca=0
 [ -n "${VAULT_TLS_SERVER_NAME:-}" ]                                      && inject_sni=0
 
-: "<%= $listen_port %>"
+: "<%= $service_port %>"
 
 extra=
-[ "$inject_addr" = 1 ] && extra="$extra --address=https://127.0.0.1:8200"
+[ "$inject_addr" = 1 ] && extra="$extra --address=https://127.0.0.1:<%= $service_port %>"
 [ "$inject_ca"   = 1 ] && extra="$extra --ca-cert=/etc/bvault/tls/server.crt"
 if [ "$inject_sni" = 1 ] && [ "$inject_addr" = 1 ]; then
   fqdn=$(hostname -f 2>/dev/null || hostname 2>/dev/null)

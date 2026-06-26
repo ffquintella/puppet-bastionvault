@@ -12,10 +12,22 @@ ContainerName=bastionvault
 # bind-mounted config and data directories (owned by bastionvault on the host)
 # are readable/writable from inside the container.
 UserNS=keep-id:uid=<%= $bastionvault::container_uid %>,gid=<%= $bastionvault::container_gid %>
+<%- if $bastionvault::network_mode == 'host' { -%>
+# Host networking: the container shares the host network namespace. There is no
+# pasta/slirp4netns user-mode translation layer, so the passt flow-table socket
+# leak that exhausts the ephemeral port range under long-lived HA Raft/hiqlite
+# peer connections cannot occur, and the server can reach host-local services
+# (e.g. ferrogate) directly over loopback. The listener binds $listen_port on
+# the host directly, so no PublishPort mapping is needed (and PublishPort is
+# incompatible with Network=host).
+Network=host
+<%- } else { -%>
+Network=<%= $bastionvault::network_mode %>
 PublishPort=<%= $bastionvault::listen_port %>:<%= $bastionvault::container_port %>
 <%- if $bastionvault::mode == 'ha' { -%>
 PublishPort=<%= $bastionvault::raft_port %>:<%= $bastionvault::raft_port %>
 PublishPort=<%= $bastionvault::internal_api_port %>:<%= $bastionvault::internal_api_port %>
+<%- } -%>
 <%- } -%>
 Volume=<%= $bastionvault::config_dir %>/config.hcl:/etc/bvault/config.hcl:ro,Z
 Volume=<%= $bastionvault::tls_dir %>:/etc/bvault/tls:ro,Z

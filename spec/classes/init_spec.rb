@@ -16,6 +16,26 @@ end
 
 if catalog_harness == :regent
   describe 'bastionvault' do
+    # regent's minimal DSL has no rspec-puppet-facts; supply EL9 facts
+    # explicitly so the RedHat-only OS gate in init.pp lets the catalog
+    # compile. Mirrors the fact shape used by the rspec-puppet branch.
+    let(:facts) do
+      {
+        os: {
+          family:  'RedHat',
+          name:    'Rocky',
+          release: { major: '9', full: '9.4' },
+          selinux: { enabled: true },
+        },
+        networking: {
+          fqdn:     'bv1.example.test',
+          hostname: 'bv1',
+          ip:       '10.0.0.10',
+        },
+        bastionvault_user_uid: 1234,
+      }
+    end
+
     it { is_expected.to compile }
     it { is_expected.to contain_class('baseapp') }
     it { is_expected.to contain_class('bastionvault::install') }
@@ -48,10 +68,21 @@ describe 'bastionvault' do
           ).with_content(%r{Image=docker\.io/bastionvault:0\.3\.2})
         end
 
-        it 'publishes the host port 4200 mapped to container 8200' do
+        it 'uses host networking with no PublishPort mapping by default' do
           is_expected.to contain_file(
             '/var/lib/bastionvault/.config/containers/systemd/bastionvault.container',
-          ).with_content(%r{PublishPort=4200:8200})
+          ).with_content(%r{^Network=host$})
+            .without_content(%r{PublishPort})
+        end
+
+        it 'binds the in-container listener directly on the host port 4200' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{address\s*=\s*"0\.0\.0\.0:4200"})
+        end
+
+        it 'points the CLI wrapper at the host-facing port 4200' do
+          is_expected.to contain_file('/usr/local/bin/bvault')
+            .with_content(%r{--address=https://127\.0\.0\.1:4200})
         end
 
         it 'creates the host backup directory owned by the service user' do
@@ -138,9 +169,10 @@ describe 'bastionvault' do
       context 'with mode=ha and a valid 3-node peer list' do
         let(:params) do
           {
-            mode:    'ha',
-            node_id: 2,
-            nodes:   [
+            mode:         'ha',
+            node_id:      2,
+            network_mode: 'pasta',
+            nodes:        [
               { 'id' => 1, 'raft_host' => '10.0.0.11', 'raft_port' => 8210, 'api_host' => '10.0.0.11', 'api_port' => 8220 },
               { 'id' => 2, 'raft_host' => '10.0.0.12', 'raft_port' => 8210, 'api_host' => '10.0.0.12', 'api_port' => 8220 },
               { 'id' => 3, 'raft_host' => '10.0.0.13', 'raft_port' => 8210, 'api_host' => '10.0.0.13', 'api_port' => 8220 },
@@ -229,8 +261,43 @@ describe 'bastionvault' do
         end
       end
 
-      context 'with custom listen_port' do
+      context 'with custom listen_port (host networking)' do
         let(:params) { { listen_port: 9200 } }
+
+        it 'binds the in-container listener directly on the override port' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{address\s*=\s*"0\.0\.0\.0:9200"})
+        end
+      end
+
+      context 'with network_mode=pasta (legacy user-mode networking)' do
+        let(:params) { { network_mode: 'pasta' } }
+
+        it 'emits the user-mode network backend' do
+          is_expected.to contain_file(
+            '/var/lib/bastionvault/.config/containers/systemd/bastionvault.container',
+          ).with_content(%r{^Network=pasta$})
+        end
+
+        it 'maps the host port 4200 to the in-container listener 8200' do
+          is_expected.to contain_file(
+            '/var/lib/bastionvault/.config/containers/systemd/bastionvault.container',
+          ).with_content(%r{PublishPort=4200:8200})
+        end
+
+        it 'keeps the in-container listener on the container port 8200' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{address\s*=\s*"0\.0\.0\.0:8200"})
+        end
+
+        it 'points the CLI wrapper at the container port 8200' do
+          is_expected.to contain_file('/usr/local/bin/bvault')
+            .with_content(%r{--address=https://127\.0\.0\.1:8200})
+        end
+      end
+
+      context 'with custom listen_port under pasta networking' do
+        let(:params) { { listen_port: 9200, network_mode: 'pasta' } }
 
         it 'uses the override in the Quadlet PublishPort' do
           is_expected.to contain_file(

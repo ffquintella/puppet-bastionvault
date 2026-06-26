@@ -46,8 +46,12 @@ From `deploy/container/Containerfile`:
 - Working directory: `/var/lib/bvault`.
 - Default container `EXPOSE` is `8200`; the product default for the API
   listener is `8200`. **This module defaults the host-facing API port to
-  `4200`** (operator preference) and maps it to the in-container listener
-  port via the Quadlet `PublishPort`.
+  `4200`** (operator preference). Under the default `network_mode => 'host'`
+  the container shares the host network namespace and the in-container
+  listener binds `4200` directly (no `PublishPort` — incompatible with host
+  networking, and there is no pasta/passt flow-table to leak sockets). Under
+  the legacy `network_mode => 'pasta'` / `'slirp4netns'` modes the listener
+  stays on `8200` and the Quadlet `PublishPort` maps `4200:8200`.
 - Image entrypoint: `bvault server --config /etc/bvault/config.hcl`. The
   image refuses to start with the bundled sample config unmodified, so the
   module MUST always write a real config before starting the service.
@@ -152,10 +156,11 @@ class bastionvault (
   String[1]                   $image_tag       = '0.3.2',
 
   # --- listener ---
-  Stdlib::Port                $listen_port     = 4200,         # host publish
-  Stdlib::Port                $container_port  = 8200,         # in-container API
+  Stdlib::Port                $listen_port     = 4200,         # host-facing API
+  Stdlib::Port                $container_port  = 8200,         # in-container API (pasta/slirp only)
   Stdlib::IP::Address         $listen_address  = '0.0.0.0',
   Boolean                     $tls_disable     = false,
+  Enum['host','pasta','slirp4netns'] $network_mode = 'host',   # host netns by default
 
   # --- paths (host) ---
   Stdlib::Absolutepath        $data_dir        = '/srv/application-data/bastionvault',
@@ -309,8 +314,12 @@ After=network-online.target
 [Container]
 Image=<%= $image_ref %>
 ContainerName=bastionvault
-PublishPort=<%= $listen_port %>:<%= $container_port %>
-# HA cluster ports (only when $mode == 'ha'):
+# network_mode == 'host' (default): share the host netns, no PublishPort.
+Network=host
+# network_mode == 'pasta'/'slirp4netns' (legacy): user-mode stack + mappings.
+# Network=<%= $network_mode %>
+# PublishPort=<%= $listen_port %>:<%= $container_port %>
+# HA cluster ports (only under a user-mode stack when $mode == 'ha'):
 # PublishPort=<raft_port>:<raft_port>
 # PublishPort=<internal_api_port>:<internal_api_port>
 Volume=<%= $config_dir %>/config.hcl:/etc/bvault/config.hcl:ro,Z
@@ -415,8 +424,14 @@ init via an external KMS-backed seal; that is a different design.
 
 ## 13. Cluster awareness
 
-- `$mode = 'ha'` flips the template branch and adds the hiqlite Raft/API
-  ports to the Quadlet `PublishPort` list.
+- `$mode = 'ha'` flips the template branch and (under a user-mode network
+  stack) adds the hiqlite Raft/API ports to the Quadlet `PublishPort` list.
+  Under the default `network_mode => 'host'` the container shares the host
+  netns, so the Raft/API listeners bind their host ports directly and no
+  `PublishPort` is emitted. Host networking is the recommended mode for HA:
+  the long-lived Raft/hiqlite peer connections are exactly the workload that
+  leaks entries in pasta/passt's flow table and exhausts the ephemeral port
+  range over time.
 - `$nodes` is an array of structs (see §6), rendered exactly into the
   hiqlite `nodes = [ "id:raft_host:raft_port:api_host:api_port", … ]` form.
 - `$secret_raft` and `$secret_api` are `Sensitive` — never logged, never
@@ -478,7 +493,10 @@ bastionvault::nodes:
 For each class, on EL9 and EL10 facts via `rspec-puppet-facts`:
 - **image_ref composition**: empty `$image_account` →
   `docker.io/bastionvault:0.3.2`; non-empty → includes account segment.
-- **port default**: Quadlet renders `PublishPort=4200:8200`.
+- **network default**: Quadlet renders `Network=host` with no `PublishPort`,
+  and config.hcl binds the listener on `0.0.0.0:4200`.
+- **pasta/slirp4netns**: Quadlet renders `Network=<mode>` and
+  `PublishPort=4200:8200`, and config.hcl binds the listener on `0.0.0.0:8200`.
 - **mode=single**: config.hcl contains `storage "hiqlite"` with no `nodes`.
 - **mode=ha**: config.hcl contains host-only `listen_addr_api` /
   `listen_addr_raft`, separate `port_api` / `port_raft`, and `nodes = [ … ]`

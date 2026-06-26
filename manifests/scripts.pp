@@ -42,6 +42,7 @@ class bastionvault::scripts {
     content => epp('bastionvault/rustion-master-bootstrap-wrapper.sh.epp', {
         'user'                => $user,
         'in_container_script' => '/usr/local/bin/rustion-master-bootstrap.sh',
+        'service_port'        => $bastionvault::service_port,
     }),
   }
 }

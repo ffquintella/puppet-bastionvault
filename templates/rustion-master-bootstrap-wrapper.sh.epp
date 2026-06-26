@@ -1,5 +1,6 @@
 <%- | String[1]            $user,
       Stdlib::Absolutepath $in_container_script,
+      Stdlib::Port         $service_port,
 | -%>
 #!/bin/sh
 # Managed by Puppet — bastionvault module.
@@ -35,10 +36,13 @@ caller=${SUDO_USER:-${LOGNAME:-${USER:-anon}}}
 token_file=/etc/bvault/cli-tokens/${caller}.token
 
 # SNI for the SAN-vs-loopback mismatch — the cert is issued for the
-# host FQDN, the connection lands on 127.0.0.1.
+# host FQDN, the connection lands on 127.0.0.1. The listener binds
+# :<%= $service_port %> (= bastionvault::service_port: $listen_port under host
+# networking, $container_port under pasta/slirp4netns), reachable on the
+# container's loopback from inside this `podman exec`.
 fqdn=$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo localhost)
 
-podman_env="--env VAULT_ADDR=https://127.0.0.1:8200"
+podman_env="--env VAULT_ADDR=https://127.0.0.1:<%= $service_port %>"
 podman_env="$podman_env --env VAULT_CACERT=/etc/bvault/tls/server.crt"
 podman_env="$podman_env --env VAULT_TLS_SERVER_NAME=${fqdn}"
 podman_env="$podman_env --env BVAULT_TOKEN_FILE=${token_file}"

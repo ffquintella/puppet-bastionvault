@@ -48,7 +48,7 @@ storage "hiqlite" {
 }
 
 listener "tcp" {
-  address       = "<%= $bastionvault::listen_address %>:<%= $bastionvault::container_port %>"
+  address       = "<%= $bastionvault::listen_address %>:<%= $bastionvault::service_port %>"
   tls_disable   = <%= $bastionvault::tls_disable %>
   tls_cert_file = "/etc/bvault/tls/server.crt"
   tls_key_file  = "/etc/bvault/tls/server.key"

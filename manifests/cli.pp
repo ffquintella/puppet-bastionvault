@@ -7,9 +7,9 @@
 #
 # @api private
 class bastionvault::cli {
-  $user        = $bastionvault::user
-  $group       = $bastionvault::group
-  $listen_port = $bastionvault::listen_port
+  $user         = $bastionvault::user
+  $group        = $bastionvault::group
+  $service_port = $bastionvault::service_port
 
   file { '/usr/local/bin/bvault':
     ensure  => file,
@@ -17,8 +17,8 @@ class bastionvault::cli {
     group   => 'root',
     mode    => '0755',
     content => epp('bastionvault/bvault-wrapper.sh.epp', {
-        'user'        => $user,
-        'listen_port' => $listen_port,
+        'user'         => $user,
+        'service_port' => $service_port,
     }),
   }
 

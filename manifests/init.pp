@@ -13,6 +13,16 @@
 # @param container_port  In-container API listener port.
 # @param listen_address  Bind address inside the container.
 # @param tls_disable     Disable TLS on the API listener (NOT recommended).
+# @param network_mode    Container network backend. `host` (default) shares the
+#   host network namespace: there is no pasta/slirp4netns user-mode translation
+#   layer, so the passt flow-table socket leak that exhausts the ephemeral port
+#   range under long-lived peer connections (HA Raft/hiqlite) cannot occur, and
+#   the server reaches host-local services such as ferrogate directly over
+#   loopback. With `host` the listener binds `listen_port` on the host directly
+#   and no `PublishPort` mapping is emitted. `pasta` / `slirp4netns` select the
+#   legacy rootless user-mode network stack with `PublishPort` mappings — only
+#   appropriate for short-lived connection patterns or when host-namespace
+#   sharing is unacceptable.
 # @param data_dir        Host path for persistent data.
 # @param config_dir      Host path for the rendered config.hcl.
 # @param tls_dir         Host path for TLS material.
@@ -114,6 +124,7 @@ class bastionvault (
   Stdlib::Port                                 $container_port  = 8200,
   Stdlib::IP::Address                          $listen_address  = '0.0.0.0',
   Boolean                                      $tls_disable     = false,
+  Enum['host', 'pasta', 'slirp4netns']         $network_mode    = 'host',
 
   Stdlib::Absolutepath                         $data_dir        = '/srv/application-data/bastionvault',
   Stdlib::Absolutepath                         $config_dir      = '/srv/application-config/bastionvault',
@@ -413,6 +424,17 @@ class bastionvault (
   $host_ca_bundle_effective = $host_ca_bundle_path ? {
     undef   => '/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem',
     default => $host_ca_bundle_path,
+  }
+
+  # Port the in-container listener actually binds. Under host networking there
+  # is no port translation, so the listener binds the canonical host-facing
+  # $listen_port directly; under the user-mode stacks (pasta/slirp4netns) the
+  # listener stays on $container_port and Quadlet maps $listen_port:$container_port.
+  # config.hcl and the CLI wrapper both consume $service_port, so the external
+  # contract ($listen_port and $api_addr) is identical across modes.
+  $service_port = $network_mode ? {
+    'host'  => $listen_port,
+    default => $container_port,
   }
 
   # Effective api_addr if operator did not pin one.

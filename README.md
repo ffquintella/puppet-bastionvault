@@ -9,6 +9,11 @@ Full design lives in [docs/specs.md](docs/specs.md).
 ## What this module does
 
 - Installs Podman and rootless networking helpers.
+- Runs the container on **host networking** by default (`network_mode => 'host'`),
+  so it avoids the pasta/passt flow-table socket leak under long-lived HA peer
+  connections and reaches host-local services (e.g. ferrogate) over loopback.
+  Set `network_mode => 'pasta'` (or `'slirp4netns'`) for the legacy user-mode
+  stack with published ports.
 - Creates a non-root system user (`bastionvault`) with systemd lingering.
 - Renders `config.hcl` (single-node or HA / hiqlite Raft) from parameters.
 - Installs a Quadlet `.container` unit under the user's systemd manager.
@@ -34,7 +39,8 @@ After the service is up, an operator must run `bvault operator init` and
 include bastionvault
 ```
 
-Defaults: `docker.io/bastionvault:0.3.2`, listening on host port `4200`.
+Defaults: `docker.io/bastionvault:0.3.2`, listening on host port `4200`
+(bound directly on the host under the default `host` networking mode).
 
 ## Custom registry / account / tag
 
