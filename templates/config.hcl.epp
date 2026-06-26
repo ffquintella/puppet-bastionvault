@@ -23,6 +23,7 @@
       Integer[0]                    $log_rotate_size_mb,
       Integer[0]                    $log_rotate_keep,
       Stdlib::Absolutepath          $pid_file,
+      Optional[Stdlib::Absolutepath] $plugin_runtime_dir,
 | -%>
 <%- # BastionVault config.hcl — rendered by Puppet. Mirrors the schema in
     # ../BastionVault/config/{single-node,ha-cluster}.hcl exactly.
@@ -92,3 +93,11 @@ log_rotate_size_mb = <%= $log_rotate_size_mb %>
 log_rotate_keep    = <%= $log_rotate_keep %>
 <%- } -%>
 pid_file  = "<%= $pid_file %>"
+<%- if $plugin_runtime_dir { -%>
+# Directory the process-plugin runtime stages plugin executables in before
+# spawning them. `/tmp` is often mounted noexec in hardened containers, which
+# makes execve of a process plugin fail with EACCES; this path is writable and
+# exec-allowed and the server creates it on first use. (WASM plugins never exec
+# and are unaffected.) Overridable at runtime via BV_PLUGIN_RUNTIME_DIR.
+plugin_runtime_dir = "<%= $plugin_runtime_dir %>"
+<%- } -%>

@@ -95,6 +95,17 @@
 # @param cluster_tls_api_key_base64    Optional Sensitive base64-encoded hiqlite API key.
 # @param api_addr        Public api_addr URL. Auto-derived if undef.
 # @param pid_file        Path used by the binary for its pidfile.
+# @param plugin_runtime_dir In-container directory the process-plugin runtime
+#   stages plugin executables in before spawning them (config.hcl
+#   `plugin_runtime_dir`, overridable at runtime via `BV_PLUGIN_RUNTIME_DIR`).
+#   The OS temp dir (`/tmp`) is frequently mounted `noexec` in hardened
+#   containers, which makes `execve` of a process-runtime plugin (e.g.
+#   `xca-import`) fail with `EACCES`, surfacing as a generic invoke error;
+#   WASM-runtime plugins (e.g. totp) never exec and are unaffected. The default
+#   points at a writable, exec-allowed path on the container's own filesystem;
+#   the server creates it on first use. Set to undef to omit the key and fall
+#   back to the server's OS-temp-dir default. On read-only-rootfs deployments,
+#   override this with a path backed by a writable, exec-allowed bind mount.
 # @param manage_selinux  Manage SELinux fcontext entries for module-owned paths.
 # @param manage_firewall Open $listen_port in firewalld (off by default).
 # @param mount_host_ca_bundle When true, bind-mount the host's system CA trust
@@ -220,6 +231,8 @@ class bastionvault (
 
   Optional[Stdlib::HTTPSUrl]                   $api_addr        = undef,
   Stdlib::Absolutepath                         $pid_file        = '/var/run/bvault.pid',
+
+  Optional[Stdlib::Absolutepath]               $plugin_runtime_dir = '/var/lib/bvault/plugin-run',
 
   Boolean                                      $manage_selinux  = true,
   Boolean                                      $manage_firewall = false,

@@ -40,6 +40,11 @@ bastionvault::cluster_tls_api_no_verify: false
 
 bastionvault::pid_file: '/var/run/bvault.pid'
 
+# In-container, exec-allowed staging dir for process-plugin binaries. Keeps
+# plugins working when /tmp is mounted noexec. Set to ~ to use the server's
+# OS-temp-dir default; override to a writable exec mount under read-only rootfs.
+bastionvault::plugin_runtime_dir: '/var/lib/bvault/plugin-run'
+
 bastionvault::manage_selinux: true
 bastionvault::manage_firewall: false
 

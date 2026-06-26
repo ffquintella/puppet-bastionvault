@@ -70,6 +70,7 @@ class bastionvault::config {
         'log_rotate_size_mb'                   => $bastionvault::log_rotate_size_mb,
         'log_rotate_keep'                      => $bastionvault::log_rotate_keep,
         'pid_file'                             => $bastionvault::pid_file,
+        'plugin_runtime_dir'                   => $bastionvault::plugin_runtime_dir,
     }),
     show_diff => false,
   }

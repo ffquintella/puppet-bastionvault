@@ -100,7 +100,16 @@ if catalog_harness == :regent
       it 'renders the single-node hiqlite storage block' do
         is_expected.to contain_file(config).with_content(%r{storage "hiqlite"})
       end
+
+      it 'points plugin_runtime_dir at an exec-allowed staging dir' do
+        is_expected.to contain_file(config)
+          .with_content(%r{plugin_runtime_dir\s*=\s*"/var/lib/bvault/plugin-run"})
+      end
     end
+    # NOTE: the `plugin_runtime_dir => undef` (key-omitted) path is covered only
+    # in the rspec-puppet branch — regent's param injection cannot express a
+    # Puppet undef (`:undef` is passed through as a literal), so the default
+    # value still renders here.
 
     context 'with network_mode=pasta (legacy user-mode networking)' do
       let(:params) { { network_mode: 'pasta' } }
@@ -197,6 +206,20 @@ describe 'bastionvault' do
           is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl').without_content(
             %r{nodes\s*=},
           )
+        end
+
+        it 'renders plugin_runtime_dir pointing at an exec-allowed staging dir' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{plugin_runtime_dir\s*=\s*"/var/lib/bvault/plugin-run"})
+        end
+      end
+
+      context 'with plugin_runtime_dir => undef' do
+        let(:params) { { plugin_runtime_dir: :undef } }
+
+        it 'omits the plugin_runtime_dir key so the server uses its OS-temp default' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .without_content(%r{plugin_runtime_dir})
         end
 
         it 'creates the non-root user with linger guard' do
