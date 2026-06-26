@@ -1,46 +1,70 @@
-<%- |
+<%- | Integer                       $node_id,
+      String[1]                     $secret_raft,
+      String[1]                     $secret_api,
+      Enum['single', 'ha']          $mode,
+      String[1]                     $raft_listen_addr,
+      Stdlib::Port                  $internal_api_port,
+      Stdlib::Port                  $raft_port,
+      Optional[Array[Hash]]         $nodes,
+      Boolean                       $cluster_tls_raft_disable,
+      Optional[Stdlib::Absolutepath] $cluster_tls_raft_cert_path_effective,
+      Optional[Stdlib::Absolutepath] $cluster_tls_raft_key_path_effective,
+      Boolean                       $cluster_tls_raft_no_verify,
+      Boolean                       $cluster_tls_api_disable,
+      Optional[Stdlib::Absolutepath] $cluster_tls_api_cert_path_effective,
+      Optional[Stdlib::Absolutepath] $cluster_tls_api_key_path_effective,
+      Boolean                       $cluster_tls_api_no_verify,
+      Stdlib::IP::Address           $listen_address,
+      Stdlib::Port                  $service_port,
+      Boolean                       $tls_disable,
+      String[1]                     $api_addr_effective,
+      String[1]                     $log_level,
+      Boolean                       $log_to_stderr,
+      Integer[0]                    $log_rotate_size_mb,
+      Integer[0]                    $log_rotate_keep,
+      Stdlib::Absolutepath          $pid_file,
 | -%>
 <%- # BastionVault config.hcl — rendered by Puppet. Mirrors the schema in
     # ../BastionVault/config/{single-node,ha-cluster}.hcl exactly.
 -%>
 storage "hiqlite" {
   data_dir    = "/var/lib/bvault/data"
-  node_id     = <%= $bastionvault::node_id %>
-  secret_raft = "<%= $bastionvault::secret_raft_sensitive.unwrap %>"
-  secret_api  = "<%= $bastionvault::secret_api_sensitive.unwrap %>"
-<%- if $bastionvault::mode == 'ha' { -%>
-  listen_addr_api  = "<%= $bastionvault::raft_listen_addr %>"
-  listen_addr_raft = "<%= $bastionvault::raft_listen_addr %>"
-  port_api         = <%= $bastionvault::internal_api_port %>
-  port_raft        = <%= $bastionvault::raft_port %>
+  node_id     = <%= $node_id %>
+  secret_raft = "<%= $secret_raft %>"
+  secret_api  = "<%= $secret_api %>"
+<%- if $mode == 'ha' { -%>
+  listen_addr_api  = "<%= $raft_listen_addr %>"
+  listen_addr_raft = "<%= $raft_listen_addr %>"
+  port_api         = <%= $internal_api_port %>
+  port_raft        = <%= $raft_port %>
   nodes            = [
-<%-   $bastionvault::nodes.each |$n| { -%>
+<%-   $nodes.each |$n| { -%>
     "<%= $n['id'] %>:<%= $n['raft_host'] %>:<%= $n['raft_port'] %>:<%= $n['api_host'] %>:<%= $n['api_port'] %>",
 <%-   } -%>
   ]
-<%-   if $bastionvault::cluster_tls_raft_disable { -%>
+<%-   if $cluster_tls_raft_disable { -%>
   tls_raft_disable = true
 <%-   } else { -%>
-<%-     if $bastionvault::cluster_tls_raft_cert_path_effective { -%>
-  tls_raft_cert = "<%= $bastionvault::cluster_tls_raft_cert_path_effective %>"
+<%-     if $cluster_tls_raft_cert_path_effective { -%>
+  tls_raft_cert = "<%= $cluster_tls_raft_cert_path_effective %>"
 <%-     } -%>
-<%-     if $bastionvault::cluster_tls_raft_key_path_effective { -%>
-  tls_raft_key  = "<%= $bastionvault::cluster_tls_raft_key_path_effective %>"
+<%-     if $cluster_tls_raft_key_path_effective { -%>
+  tls_raft_key  = "<%= $cluster_tls_raft_key_path_effective %>"
 <%-     } -%>
-<%-     if $bastionvault::cluster_tls_raft_no_verify { -%>
+<%-     if $cluster_tls_raft_no_verify { -%>
   tls_raft_no_verify = true
 <%-     } -%>
 <%-   } -%>
-<%-   if $bastionvault::cluster_tls_api_disable { -%>
+<%-   if $cluster_tls_api_disable { -%>
   tls_api_disable = true
 <%-   } else { -%>
-<%-     if $bastionvault::cluster_tls_api_cert_path_effective { -%>
-  tls_api_cert = "<%= $bastionvault::cluster_tls_api_cert_path_effective %>"
+<%-     if $cluster_tls_api_cert_path_effective { -%>
+  tls_api_cert = "<%= $cluster_tls_api_cert_path_effective %>"
 <%-     } -%>
-<%-     if $bastionvault::cluster_tls_api_key_path_effective { -%>
-  tls_api_key  = "<%= $bastionvault::cluster_tls_api_key_path_effective %>"
+<%-     if $cluster_tls_api_key_path_effective { -%>
+  tls_api_key  = "<%= $cluster_tls_api_key_path_effective %>"
 <%-     } -%>
-<%-     if $bastionvault::cluster_tls_api_no_verify { -%>
+<%-     if $cluster_tls_api_no_verify { -%>
   tls_api_no_verify = true
 <%-     } -%>
 <%-   } -%>
@@ -48,23 +72,23 @@ storage "hiqlite" {
 }
 
 listener "tcp" {
-  address       = "<%= $bastionvault::listen_address %>:<%= $bastionvault::service_port %>"
-  tls_disable   = <%= $bastionvault::tls_disable %>
+  address       = "<%= $listen_address %>:<%= $service_port %>"
+  tls_disable   = <%= $tls_disable %>
   tls_cert_file = "/etc/bvault/tls/server.crt"
   tls_key_file  = "/etc/bvault/tls/server.key"
 }
 
-api_addr  = "<%= $bastionvault::api_addr_effective %>"
-log_level = "<%= $bastionvault::log_level %>"
+api_addr  = "<%= $api_addr_effective %>"
+log_level = "<%= $log_level %>"
 # In-container path; the host directory $bastionvault::log_dir is bind-mounted
 # here by the Quadlet template. The server writes operations.log, security.log,
 # and audit.log into this directory.
 log_dir   = "/var/log/bvault"
-log_to_stderr      = <%= $bastionvault::log_to_stderr %>
-<%- if $bastionvault::log_rotate_size_mb > 0 { -%>
-log_rotate_size_mb = <%= $bastionvault::log_rotate_size_mb %>
+log_to_stderr      = <%= $log_to_stderr %>
+<%- if $log_rotate_size_mb > 0 { -%>
+log_rotate_size_mb = <%= $log_rotate_size_mb %>
 <%- } -%>
-<%- if $bastionvault::log_rotate_keep > 0 { -%>
-log_rotate_keep    = <%= $bastionvault::log_rotate_keep %>
+<%- if $log_rotate_keep > 0 { -%>
+log_rotate_keep    = <%= $log_rotate_keep %>
 <%- } -%>
-pid_file  = "<%= $bastionvault::pid_file %>"
+pid_file  = "<%= $pid_file %>"

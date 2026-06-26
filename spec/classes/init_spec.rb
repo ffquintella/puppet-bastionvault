@@ -4,9 +4,22 @@
 #   * Under MRI Ruby with rspec-puppet + rspec-puppet-facts loaded
 #     (i.e. `bundle exec rake spec`), runs the full catalog test matrix.
 #   * Under runners that lack those gems (e.g. `regent test`, whose
-#     Artichoke Ruby ships only a built-in minimal DSL), falls through
-#     to a smoke spec that only uses matchers regent supports
-#     (`compile`, `contain_class`, `contain_file`).
+#     Artichoke Ruby ships only a built-in minimal DSL), runs an
+#     equivalent suite using only matchers regent supports.
+#
+# regent DSL capabilities (verified empirically):
+#   * Supported: compile, contain_class, contain_file, with_content,
+#     let(:facts), let(:params), nested context.
+#   * NOT usable: on_supported_os / rspec-puppet-facts (so facts are
+#     supplied explicitly), and `without_content` — it is a no-op under
+#     regent (always passes), so absence is asserted with POSITIVE
+#     matches instead (e.g. `Network=host` immediately followed by the
+#     first `Volume=` line proves no PublishPort was emitted between them).
+#   * The .container and config.hcl templates are parameterized EPP fed
+#     via epp(tpl, {...}); regent renders those real values. (Templates
+#     that read $bastionvault::* from scope render `undef` under regent,
+#     and Sensitive#unwrap inside EPP renders `undef` too — which is why
+#     config.pp unwraps the Raft/API secrets before passing them in.)
 catalog_harness = begin
   require 'spec_helper'
   defined?(on_supported_os) ? :rspec_puppet : :regent
@@ -50,6 +63,80 @@ if catalog_harness == :regent
     it { is_expected.to contain_file('/etc/systemd/system/bastionvault.service') }
     it { is_expected.to contain_file('/usr/local/bin/bvault') }
     it { is_expected.to contain_file('/etc/sudoers.d/bastionvault') }
+
+    quadlet = '/var/lib/bastionvault/.config/containers/systemd/bastionvault.container'
+    config  = '/srv/application-config/bastionvault/config.hcl'
+    wrapper = '/usr/local/bin/bvault'
+
+    context 'with defaults (host networking)' do
+      it 'composes the image ref' do
+        is_expected.to contain_file(quadlet).with_content(%r{Image=docker\.io/bastionvault:0\.3\.2})
+      end
+
+      it 'uses Network=host' do
+        is_expected.to contain_file(quadlet).with_content(%r{^Network=host$})
+      end
+
+      # `without_content` is a no-op under regent, so prove the PublishPort
+      # line is absent positionally: Network=host is immediately followed by
+      # the first Volume= line, with no PublishPort between them.
+      it 'emits no PublishPort line under host networking' do
+        is_expected.to contain_file(quadlet).with_content(%r{Network=host\nVolume=})
+      end
+
+      it 'binds the in-container listener directly on host port 4200' do
+        is_expected.to contain_file(config).with_content(%r{address\s*=\s*"0\.0\.0\.0:4200"})
+      end
+
+      it 'points the CLI wrapper at the host-facing port 4200' do
+        is_expected.to contain_file(wrapper).with_content(%r{--address=https://127\.0\.0\.1:4200})
+      end
+
+      it 'bind-mounts the backup directory at /backups' do
+        is_expected.to contain_file(quadlet)
+          .with_content(%r{Volume=/srv/application-data/bastionvault/backups:/backups:Z})
+      end
+
+      it 'renders the single-node hiqlite storage block' do
+        is_expected.to contain_file(config).with_content(%r{storage "hiqlite"})
+      end
+    end
+
+    context 'with network_mode=pasta (legacy user-mode networking)' do
+      let(:params) { { network_mode: 'pasta' } }
+
+      it 'emits the user-mode network backend' do
+        is_expected.to contain_file(quadlet).with_content(%r{^Network=pasta$})
+      end
+
+      it 'maps host port 4200 to the in-container listener 8200' do
+        is_expected.to contain_file(quadlet).with_content(%r{PublishPort=4200:8200})
+      end
+
+      it 'keeps the in-container listener on the container port 8200' do
+        is_expected.to contain_file(config).with_content(%r{address\s*=\s*"0\.0\.0\.0:8200"})
+      end
+
+      it 'points the CLI wrapper at the container port 8200' do
+        is_expected.to contain_file(wrapper).with_content(%r{--address=https://127\.0\.0\.1:8200})
+      end
+    end
+
+    context 'with custom listen_port (host networking)' do
+      let(:params) { { listen_port: 9200 } }
+
+      it 'binds the listener directly on the override port' do
+        is_expected.to contain_file(config).with_content(%r{address\s*=\s*"0\.0\.0\.0:9200"})
+      end
+    end
+
+    # NOTE: mode=ha is NOT exercised here. The $nodes parameter is typed
+    # Array[Struct[{ id, raft_host => Stdlib::Host, ... }]]; regent's type
+    # checker cannot validate that nested Struct/Stdlib::Host alias and
+    # rejects any array-of-hashes for it, so an HA catalog will not compile
+    # under regent. HA rendering (peer list, PublishPort of Raft/API ports,
+    # and host-mode HA binding directly with no PublishPort) is fully
+    # covered in the rspec-puppet branch below, which runs under real Puppet.
   end
   return
 end
@@ -198,6 +285,32 @@ describe 'bastionvault' do
             '/var/lib/bastionvault/.config/containers/systemd/bastionvault.container',
           ).with_content(%r{PublishPort=8210:8210})
             .with_content(%r{PublishPort=8220:8220})
+        end
+      end
+
+      context 'with mode=ha under host networking (default)' do
+        let(:params) do
+          {
+            mode:    'ha',
+            node_id: 1,
+            nodes:   [
+              { 'id' => 1, 'raft_host' => '10.0.0.11', 'raft_port' => 8210, 'api_host' => '10.0.0.11', 'api_port' => 8220 },
+            ],
+          }
+        end
+
+        # Host netns shares the host network, so the Raft/API listeners bind
+        # their ports directly — no PublishPort is emitted even in HA.
+        it 'emits Network=host and no PublishPort even in HA' do
+          is_expected.to contain_file(
+            '/var/lib/bastionvault/.config/containers/systemd/bastionvault.container',
+          ).with_content(%r{^Network=host$})
+            .without_content(%r{PublishPort})
+        end
+
+        it 'still renders the HA peer list in config.hcl' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{"1:10\.0\.0\.11:8210:10\.0\.0\.11:8220"})
         end
       end
 

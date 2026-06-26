@@ -40,7 +40,37 @@ class bastionvault::config {
     owner     => $user,
     group     => $group,
     mode      => '0640',
-    content   => epp('bastionvault/config.hcl.epp'),
+    content   => epp('bastionvault/config.hcl.epp', {
+        'node_id'                              => $bastionvault::node_id,
+        # Unwrap here rather than in the template: the rendered config.hcl
+        # necessarily contains the plaintext secret anyway (show_diff => false
+        # on this resource keeps it out of reports), and Sensitive.unwrap is
+        # not portable across all EPP evaluators.
+        'secret_raft'                          => $bastionvault::secret_raft_sensitive.unwrap,
+        'secret_api'                           => $bastionvault::secret_api_sensitive.unwrap,
+        'mode'                                 => $bastionvault::mode,
+        'raft_listen_addr'                     => $bastionvault::raft_listen_addr,
+        'internal_api_port'                    => $bastionvault::internal_api_port,
+        'raft_port'                            => $bastionvault::raft_port,
+        'nodes'                                => $bastionvault::nodes,
+        'cluster_tls_raft_disable'             => $bastionvault::cluster_tls_raft_disable,
+        'cluster_tls_raft_cert_path_effective' => $bastionvault::cluster_tls_raft_cert_path_effective,
+        'cluster_tls_raft_key_path_effective'  => $bastionvault::cluster_tls_raft_key_path_effective,
+        'cluster_tls_raft_no_verify'           => $bastionvault::cluster_tls_raft_no_verify,
+        'cluster_tls_api_disable'              => $bastionvault::cluster_tls_api_disable,
+        'cluster_tls_api_cert_path_effective'  => $bastionvault::cluster_tls_api_cert_path_effective,
+        'cluster_tls_api_key_path_effective'   => $bastionvault::cluster_tls_api_key_path_effective,
+        'cluster_tls_api_no_verify'            => $bastionvault::cluster_tls_api_no_verify,
+        'listen_address'                       => $bastionvault::listen_address,
+        'service_port'                         => $bastionvault::service_port,
+        'tls_disable'                          => $bastionvault::tls_disable,
+        'api_addr_effective'                   => $bastionvault::api_addr_effective,
+        'log_level'                            => $bastionvault::log_level,
+        'log_to_stderr'                        => $bastionvault::log_to_stderr,
+        'log_rotate_size_mb'                   => $bastionvault::log_rotate_size_mb,
+        'log_rotate_keep'                      => $bastionvault::log_rotate_keep,
+        'pid_file'                             => $bastionvault::pid_file,
+    }),
     show_diff => false,
   }
 

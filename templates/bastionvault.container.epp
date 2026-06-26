@@ -1,4 +1,21 @@
-<%- |
+<%- | String[1]            $image_ref,
+      Integer[0]           $container_uid,
+      Integer[0]           $container_gid,
+      Enum['host', 'pasta', 'slirp4netns'] $network_mode,
+      Stdlib::Port         $listen_port,
+      Stdlib::Port         $container_port,
+      Enum['single', 'ha'] $mode,
+      Stdlib::Port         $raft_port,
+      Stdlib::Port         $internal_api_port,
+      Stdlib::Absolutepath $config_dir,
+      Stdlib::Absolutepath $tls_dir,
+      Stdlib::Absolutepath $data_dir,
+      Stdlib::Absolutepath $log_dir,
+      Stdlib::Absolutepath $backup_dir,
+      Stdlib::Absolutepath $cli_token_dir,
+      Boolean              $mount_host_ca_bundle,
+      Stdlib::Absolutepath $host_ca_bundle_effective,
+      String[1]            $log_level,
 | -%>
 [Unit]
 Description=BastionVault server (rootless, managed by Puppet)
@@ -6,13 +23,13 @@ Wants=network-online.target
 After=network-online.target
 
 [Container]
-Image=<%= $bastionvault::image_ref %>
+Image=<%= $image_ref %>
 ContainerName=bastionvault
 # Map the in-container runtime UID/GID to the host's bastionvault user so the
 # bind-mounted config and data directories (owned by bastionvault on the host)
 # are readable/writable from inside the container.
-UserNS=keep-id:uid=<%= $bastionvault::container_uid %>,gid=<%= $bastionvault::container_gid %>
-<%- if $bastionvault::network_mode == 'host' { -%>
+UserNS=keep-id:uid=<%= $container_uid %>,gid=<%= $container_gid %>
+<%- if $network_mode == 'host' { -%>
 # Host networking: the container shares the host network namespace. There is no
 # pasta/slirp4netns user-mode translation layer, so the passt flow-table socket
 # leak that exhausts the ephemeral port range under long-lived HA Raft/hiqlite
@@ -22,33 +39,33 @@ UserNS=keep-id:uid=<%= $bastionvault::container_uid %>,gid=<%= $bastionvault::co
 # incompatible with Network=host).
 Network=host
 <%- } else { -%>
-Network=<%= $bastionvault::network_mode %>
-PublishPort=<%= $bastionvault::listen_port %>:<%= $bastionvault::container_port %>
-<%- if $bastionvault::mode == 'ha' { -%>
-PublishPort=<%= $bastionvault::raft_port %>:<%= $bastionvault::raft_port %>
-PublishPort=<%= $bastionvault::internal_api_port %>:<%= $bastionvault::internal_api_port %>
+Network=<%= $network_mode %>
+PublishPort=<%= $listen_port %>:<%= $container_port %>
+<%- if $mode == 'ha' { -%>
+PublishPort=<%= $raft_port %>:<%= $raft_port %>
+PublishPort=<%= $internal_api_port %>:<%= $internal_api_port %>
 <%- } -%>
 <%- } -%>
-Volume=<%= $bastionvault::config_dir %>/config.hcl:/etc/bvault/config.hcl:ro,Z
-Volume=<%= $bastionvault::tls_dir %>:/etc/bvault/tls:ro,Z
-Volume=<%= $bastionvault::data_dir %>:/var/lib/bvault/data:Z
-Volume=<%= $bastionvault::log_dir %>:/var/log/bvault:Z
-Volume=<%= $bastionvault::backup_dir %>:/backups:Z
+Volume=<%= $config_dir %>/config.hcl:/etc/bvault/config.hcl:ro,Z
+Volume=<%= $tls_dir %>:/etc/bvault/tls:ro,Z
+Volume=<%= $data_dir %>:/var/lib/bvault/data:Z
+Volume=<%= $log_dir %>:/var/log/bvault:Z
+Volume=<%= $backup_dir %>:/backups:Z
 # Per-host-user CLI token helper directory. The wrapper sets
 # $BVAULT_TOKEN_FILE=/etc/bvault/cli-tokens/<user>.token so `bvault login`
 # persists its issued token here (writable from inside the container) and
 # subsequent `bvault <cmd>` invocations read it back.
-Volume=<%= $bastionvault::cli_token_dir %>:/etc/bvault/cli-tokens:Z
-<%- if $bastionvault::mount_host_ca_bundle { -%>
+Volume=<%= $cli_token_dir %>:/etc/bvault/cli-tokens:Z
+<%- if $mount_host_ca_bundle { -%>
 # Host CA trust bundle (auto-detected). Mounted read-only at both the EL
 # canonical path and the Debian-style path so the in-container TLS stack
 # trusts the same roots as the host (corporate CAs from update-ca-trust, etc).
 # `:z` (lowercase) shares the SELinux label since the bundle is read by other
 # host processes; we must not relabel it exclusively to this container.
-Volume=<%= $bastionvault::host_ca_bundle_effective %>:/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem:ro,z
-Volume=<%= $bastionvault::host_ca_bundle_effective %>:/etc/ssl/certs/ca-certificates.crt:ro,z
+Volume=<%= $host_ca_bundle_effective %>:/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem:ro,z
+Volume=<%= $host_ca_bundle_effective %>:/etc/ssl/certs/ca-certificates.crt:ro,z
 <%- } -%>
-Environment=RUST_LOG=<%= $bastionvault::log_level %>
+Environment=RUST_LOG=<%= $log_level %>
 
 [Service]
 Restart=on-failure
