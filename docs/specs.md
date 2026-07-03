@@ -417,8 +417,10 @@ Puppet report stream. The module:
 - Does not auto-run `init`.
 - Documents the manual procedure in `README.md` with a pointer here.
 
-A future, separate module (`bastionvault::client` / `_init`) may automate
-init via an external KMS-backed seal; that is a different design.
+A future, separate class (`bastionvault::init` or similar) may automate
+init via an external KMS-backed seal; that is a different design. (Note:
+`bastionvault::client` now exists but is unrelated — it is the
+client-only CLI install for non-server hosts, see §19.)
 
 ---
 
@@ -584,3 +586,54 @@ Mode-specific:
 - Confirm BastionVault's exact health-check command inside the distroless
   image (`bvault status` is a placeholder until verified against the
   binary's CLI surface).
+
+---
+
+## 19. Client-only install (`bastionvault::client`)
+
+Added in 0.12.0. A standalone entry point (never `contain`ed by
+`class bastionvault`) for hosts that talk to a remote BastionVault server
+but do not run one. Same EL9/EL10 gate as the server class.
+
+**Delivery.** The upstream product packages the CLI as a `bastionvault`
+RPM (`cargo-generate-rpm` metadata in the product's Cargo.toml): it ships
+`/usr/bin/bvault`, a manpage, and bash/zsh/fish completions, and requires
+only `ca-certificates`. The class installs it from the host's existing
+repos by default, from a module-managed `yumrepo` (`manage_repo` +
+`repo_baseurl`/`repo_gpgkey`), or from a direct RPM path/URL via
+`package_source` (Puppet's yum/dnf provider honors `source` and resolves
+dependencies — verified against the AIO provider code).
+
+**Trust anchor.** `ca_cert_content` / `ca_cert_base64` / `ca_cert_source`
+(same precedence convention as the server TLS inputs) is written to
+`$ca_cert_path`, default `/etc/bvault/ca.pem` — deliberately one of the
+CLI's native auto-discovery paths (`discovered_ca_cert()` in
+`src/cli/command/mod.rs`: `$BVAULT_CACERT_AUTO` → `~/.bvault/ca.pem` →
+`/etc/bvault/ca.pem` → the puppet server-layout path), so the cert works
+even if the wrapper is disabled.
+
+**Wrapper.** `/usr/local/bin/bvault`
+(`templates/bvault-client-wrapper.sh.epp`) shadows the packaged binary
+via PATH order and injects `--address` / `--ca-cert` /
+`--tls-server-name`. Rationale: the binary has **no** clap `env` binding
+for `VAULT_ADDR` or `VAULT_TLS_SERVER_NAME` (help text mentions them
+only; just `VAULT_CACERT`/`VAULT_CAPATH`/`VAULT_SKIP_VERIFY`/
+`VAULT_TOKEN` are real), so a per-host default address requires flag
+injection. Resolution order per setting: explicit flag > environment >
+puppet param. Injection is suppressed for bare/`--help`/`--version`
+invocations and for group-without-leaf commands (`bvault operator`), and
+`--ca-cert` is only injected when the anchor file actually exists —
+logic mirrored from the server-side `bvault-wrapper.sh.epp`.
+
+**Guards.** `wrapper_path == binary_path` fails at compile (wrapper would
+exec itself). Mutual exclusion with the server class is enforced
+naturally: both declare `File['/usr/local/bin/bvault']`, so co-inclusion
+is a duplicate-declaration compile error.
+
+**Out of scope.** Token handling (`bvault login` persists per-user to
+`~/.vault-token` / `$BVAULT_TOKEN_FILE` on its own) and any server-side
+resources.
+
+Tests: `spec/classes/client_spec.rb`, dual-mode like `init_spec.rb` —
+regent covers compile + wrapper/CA rendering; the rspec-puppet branch
+adds repo/package-source, negative-path, and multi-OS coverage.

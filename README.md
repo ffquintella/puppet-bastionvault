@@ -218,18 +218,32 @@ The module decodes the base64, writes the PEM files under
 ## Client-only install (`bastionvault::client`)
 
 For hosts that only need the `bvault` CLI to talk to a remote BastionVault
-server — no container, no service. Installs the upstream `bastionvault`
-RPM (`/usr/bin/bvault` plus manpage and shell completions), optionally
-places the server's CA at `/etc/bvault/ca.pem` (a path the CLI natively
-auto-discovers), and lays a wrapper at `/usr/local/bin/bvault` that
-injects `--address` / `--ca-cert` / `--tls-server-name`.
+server — no container, no service, none of the server plumbing. The class
+does three things:
 
-The wrapper exists because the bvault binary does **not** read
-`VAULT_ADDR` / `VAULT_TLS_SERVER_NAME` from the environment (its help
-text mentions them, but no env binding exists). The wrapper makes them
-work: an explicit flag wins, then `BVAULT_ADDR`/`VAULT_ADDR` (or
-`VAULT_TLS_SERVER_NAME`) from the environment, then the puppet-configured
-value.
+1. **Installs the CLI** — the upstream `bastionvault` RPM, which ships
+   `/usr/bin/bvault` plus a manpage and bash/zsh/fish completions.
+2. **Places the trust anchor** — the server's CA (or self-signed serving
+   cert) at `/etc/bvault/ca.pem`, a path the CLI natively auto-discovers.
+3. **Configures the default server** — a wrapper at `/usr/local/bin/bvault`
+   that injects `--address` / `--ca-cert` / `--tls-server-name`, so
+   `bvault status` "just works" for every user on the host.
+
+The wrapper is what makes configuration stick: the bvault binary does
+**not** read `VAULT_ADDR` / `VAULT_TLS_SERVER_NAME` from the environment
+(its help text mentions them, but no env binding exists), so the address
+must arrive as an `--address` flag on every call. `/usr/local/bin`
+precedes `/usr/bin` on the default EL PATH, so the wrapper shadows the
+packaged binary transparently; `bvault --version`, `bvault --help`, and
+group-only invocations (`bvault operator`) pass through untouched.
+
+Do **not** include `bastionvault::client` on a node that also includes
+the server class: the server already ships its own podman-exec wrapper at
+`/usr/local/bin/bvault`, and the catalog will fail with a duplicate File
+declaration. Server nodes get their CLI through `bastionvault::cli`
+automatically.
+
+### Quick start
 
 ```puppet
 class { 'bastionvault::client':
@@ -238,13 +252,42 @@ class { 'bastionvault::client':
 }
 ```
 
-`server_url` may also be a bare cluster DNS name to use the CLI's
-SRV-based discovery (`_bvault._tcp.<name>`).
-
-Package delivery options:
+Or, Hiera-driven (the usual roles/profiles shape):
 
 ```puppet
-# From a yum repository:
+# profile::bvault_client
+include bastionvault::client
+```
+
+```yaml
+# data/common.yaml (the CA cert is public material — plain base64 is fine)
+bastionvault::client::server_url: 'https://vault.example.com:4200'
+bastionvault::client::ca_cert_base64: >
+  LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUR...
+```
+
+To produce the base64 blob from the server host (the module publishes the
+serving cert world-readable under `$tls_dir`):
+
+```sh
+base64 -w0 /srv/application-config/bastionvault/tls/server.crt
+```
+
+`server_url` may also be a bare cluster DNS name — the CLI then runs
+SRV-based discovery (`_bvault._tcp.<name>` plus `/sys/health` scoring) to
+pick a healthy HA node:
+
+```yaml
+bastionvault::client::server_url: 'vault.example.com'
+```
+
+### Package delivery options
+
+By default the class installs the `bastionvault` package from whatever
+repos the host already has. Two alternatives:
+
+```puppet
+# From a module-managed yum repository:
 class { 'bastionvault::client':
   server_url   => 'https://vault.example.com:4200',
   manage_repo  => true,
@@ -252,20 +295,60 @@ class { 'bastionvault::client':
   repo_gpgkey  => 'https://repo.example.com/bastionvault/RPM-GPG-KEY',
 }
 
-# From a direct RPM URL (dnf resolves dependencies):
+# From a direct RPM URL (dnf installs it and resolves dependencies):
 class { 'bastionvault::client':
   server_url     => 'https://vault.example.com:4200',
   package_source => 'https://github.com/ffquintella/BastionVault/releases/download/v0.9.0/bastionvault-0.9.0-1.x86_64.rpm',
 }
 ```
 
-Do **not** include `bastionvault::client` on a node that also includes
-the server class: the server already ships its own podman-exec wrapper at
-`/usr/local/bin/bvault`, and the catalog will fail with a duplicate File
-declaration.
+Set `manage_package => false` when the binary arrives by other means
+(baked image, other packaging) and you only want the CA + wrapper.
 
-Login tokens need no extra plumbing on client machines — `bvault login`
-persists to `~/.vault-token` (or `$BVAULT_TOKEN_FILE`) per user.
+### How settings are resolved at run time
+
+The wrapper never overrides anything the operator set explicitly. Per
+setting, first match wins:
+
+| Setting             | 1. flag                                        | 2. environment                               | 3. Puppet                | 4. fallback                              |
+|---------------------|------------------------------------------------|----------------------------------------------|--------------------------|------------------------------------------|
+| server address      | `--address`                                    | `BVAULT_ADDR`, `VAULT_ADDR`                  | `$server_url`            | binary default (`https://127.0.0.1:8200`) |
+| trust anchor        | `--ca-cert` / `--ca-path` / `--tls-skip-verify`| `VAULT_CACERT` / `VAULT_CAPATH` / `VAULT_SKIP_VERIFY` | `$ca_cert_path` (if the file exists) | CLI auto-discovery (`~/.bvault/ca.pem`, `/etc/bvault/ca.pem`) |
+| SNI / verify name   | `--tls-server-name`                            | `VAULT_TLS_SERVER_NAME`                      | `$tls_server_name`       | hostname from the address                |
+
+Login tokens need no plumbing: `bvault login` persists the token to
+`~/.vault-token` (or `$BVAULT_TOKEN_FILE`) per invoking user, and later
+invocations read it back automatically.
+
+### First use on a client host
+
+```sh
+bvault status            # reachability + seal status of the remote server
+bvault login ...         # token is persisted to ~/.vault-token
+bvault secrets list      # any CLI command now targets the configured server
+```
+
+### Parameters
+
+| Parameter          | Default                  | Purpose                                                            |
+|--------------------|--------------------------|--------------------------------------------------------------------|
+| `server_url`       | `undef`                  | Server URL, or bare cluster name for SRV discovery. `undef` = no `--address` injection. |
+| `manage_package`   | `true`                   | Install the CLI package.                                           |
+| `package_name`     | `'bastionvault'`         | Package name.                                                      |
+| `package_ensure`   | `'installed'`            | `installed`, `latest`, or a pinned version.                        |
+| `package_source`   | `undef`                  | Path/URL of an RPM file to install directly.                       |
+| `manage_repo`      | `false`                  | Manage a yumrepo for the package (requires `repo_baseurl`).        |
+| `repo_baseurl`     | `undef`                  | Base URL of the yum repository.                                    |
+| `repo_gpgkey`      | `undef`                  | GPG key URL for the repository.                                    |
+| `repo_gpgcheck`    | `true`                   | Enable GPG verification.                                           |
+| `ca_cert_content`  | `undef`                  | Literal PEM trust anchor (precedence: content > base64 > source).  |
+| `ca_cert_base64`   | `undef`                  | Base64-encoded PEM (single Hiera-friendly line).                   |
+| `ca_cert_source`   | `undef`                  | Puppet file `source` URI for the cert.                             |
+| `ca_cert_path`     | `'/etc/bvault/ca.pem'`   | Where the trust anchor is written.                                 |
+| `tls_server_name`  | `undef`                  | SNI/verification name when the address differs from the cert SAN.  |
+| `manage_wrapper`   | `true`                   | Manage the `/usr/local/bin` wrapper.                               |
+| `wrapper_path`     | `'/usr/local/bin/bvault'`| Wrapper location.                                                  |
+| `binary_path`      | `'/usr/bin/bvault'`      | Packaged binary the wrapper execs.                                 |
 
 ## Development
 
