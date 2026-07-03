@@ -1,0 +1,113 @@
+<%- | String               $server_url,
+      Stdlib::Absolutepath $ca_cert_path,
+      String               $tls_server_name,
+      Stdlib::Absolutepath $binary_path,
+| -%>
+#!/bin/sh
+# Managed by Puppet — bastionvault module (client-only install).
+# Thin wrapper around the packaged `bvault` binary that injects the
+# puppet-configured server address / trust anchor / SNI name, because the
+# binary itself does NOT read VAULT_ADDR or VAULT_TLS_SERVER_NAME from the
+# environment (the clap help text mentions them, but no env binding exists;
+# only VAULT_CACERT / VAULT_CAPATH / VAULT_SKIP_VERIFY / VAULT_TOKEN are
+# real env vars). This wrapper makes them effective:
+#
+#   * --address: explicit flag wins, then $BVAULT_ADDR / $VAULT_ADDR from
+#     the environment, then the puppet-configured server URL.
+#   * --ca-cert: injected only when the puppet-managed trust anchor file
+#     exists and none of --ca-cert/--ca-path/--tls-skip-verify (flag or
+#     VAULT_CACERT/VAULT_CAPATH/VAULT_SKIP_VERIFY env) is in play. The CLI
+#     also auto-discovers /etc/bvault/ca.pem on its own; the explicit flag
+#     just makes the system-wide anchor win over a user's ~/.bvault/ca.pem.
+#   * --tls-server-name: explicit flag wins, then $VAULT_TLS_SERVER_NAME,
+#     then the puppet-configured name (if any).
+#
+# Token persistence needs no plumbing here: `bvault login` writes
+# $BVAULT_TOKEN_FILE or ~/.vault-token per invoking user.
+
+# Inject defaults only if the operator didn't already set them via flag.
+# Scan once over the args; honor both --flag=value and --flag value forms.
+inject_addr=1
+inject_ca=1
+inject_sni=1
+for arg in "$@"; do
+  case "$arg" in
+    --address|--address=*)              inject_addr=0 ;;
+    --ca-cert|--ca-cert=*|--ca-path|--ca-path=*|--tls-skip-verify)
+                                        inject_ca=0 ;;
+    --tls-server-name|--tls-server-name=*)
+                                        inject_sni=0 ;;
+  esac
+done
+
+# The injected flags are subcommand-scoped; appending them when the operator
+# ran `bvault` bare, `bvault --help`, or `bvault --version` makes clap reject
+# the line with "unexpected argument '--address' found". Skip injection
+# unless we can see a subcommand on the command line.
+case "${1:-}" in
+  ''|-h|--help|-V|--version|help)
+    inject_addr=0; inject_ca=0; inject_sni=0 ;;
+esac
+
+# bvault has nested command groups (operator/cluster/auth/policy/secrets/
+# exchange/rustion at the top, plus `rustion master`, `rustion target`,
+# `operator cloud-target` one level down) whose group structs do NOT
+# accept the HTTP flags — only their leaf subcommands do. So `bvault
+# operator` alone, or `bvault rustion master` alone, fails with
+# "unexpected argument '--address' found" when we append the flags.
+# Walk the user's positional args and skip injection when we land on a
+# group without descending to a leaf.
+_walk_depth=0
+_walk_group=""
+_walk_skip=0
+for _arg in "$@"; do
+  case "$_arg" in -*) continue ;; esac
+  case "$_walk_depth" in
+    0)
+      case "$_arg" in
+        operator|cluster|auth|policy|secrets|exchange|rustion)
+          _walk_depth=1; _walk_group="$_arg" ;;
+        *) _walk_skip=2; break ;;
+      esac ;;
+    1)
+      case "$_walk_group" in
+        rustion)
+          case "$_arg" in
+            master|target) _walk_depth=2 ;;
+            *)             _walk_skip=2; break ;;
+          esac ;;
+        operator)
+          case "$_arg" in
+            cloud-target) _walk_depth=2 ;;
+            *)            _walk_skip=2; break ;;
+          esac ;;
+        *) _walk_skip=2; break ;;
+      esac ;;
+    *) _walk_skip=2; break ;;
+  esac
+done
+# _walk_skip stays 0 only when the loop ended *inside* a group (no leaf
+# was seen) — in that case suppress injection.
+if [ "$_walk_skip" -eq 0 ] && [ "$_walk_depth" -ge 1 ]; then
+  inject_addr=0; inject_ca=0; inject_sni=0
+fi
+unset _walk_depth _walk_group _walk_skip _arg
+
+# VAULT_CACERT / VAULT_CAPATH / VAULT_SKIP_VERIFY are real clap env
+# bindings — when set, let them win instead of injecting the flag (a flag
+# would override the operator's env, which is backwards).
+[ -n "${VAULT_CACERT:-}${VAULT_CAPATH:-}${VAULT_SKIP_VERIFY:-}" ] && inject_ca=0
+
+# Environment beats the puppet default for address and SNI (the binary
+# ignores these vars, so the wrapper is what makes them work).
+addr=${BVAULT_ADDR:-${VAULT_ADDR:-"<%= $server_url %>"}}
+sni=${VAULT_TLS_SERVER_NAME:-"<%= $tls_server_name %>"}
+ca_file='<%= $ca_cert_path %>'
+
+extra=
+[ "$inject_addr" = 1 ] && [ -n "$addr" ]    && extra="$extra --address=$addr"
+[ "$inject_ca"   = 1 ] && [ -n "$ca_file" ] && [ -f "$ca_file" ] && extra="$extra --ca-cert=$ca_file"
+[ "$inject_sni"  = 1 ] && [ -n "$sni" ]     && extra="$extra --tls-server-name=$sni"
+
+# shellcheck disable=SC2086  # $extra is intentionally word-split
+exec <%= $binary_path %> "$@" $extra

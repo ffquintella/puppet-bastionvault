@@ -215,6 +215,58 @@ The module decodes the base64, writes the PEM files under
 `$tls_dir` with the right ownership and `0600` / `0644` modes, and points
 `config.hcl` at the in-container paths automatically.
 
+## Client-only install (`bastionvault::client`)
+
+For hosts that only need the `bvault` CLI to talk to a remote BastionVault
+server — no container, no service. Installs the upstream `bastionvault`
+RPM (`/usr/bin/bvault` plus manpage and shell completions), optionally
+places the server's CA at `/etc/bvault/ca.pem` (a path the CLI natively
+auto-discovers), and lays a wrapper at `/usr/local/bin/bvault` that
+injects `--address` / `--ca-cert` / `--tls-server-name`.
+
+The wrapper exists because the bvault binary does **not** read
+`VAULT_ADDR` / `VAULT_TLS_SERVER_NAME` from the environment (its help
+text mentions them, but no env binding exists). The wrapper makes them
+work: an explicit flag wins, then `BVAULT_ADDR`/`VAULT_ADDR` (or
+`VAULT_TLS_SERVER_NAME`) from the environment, then the puppet-configured
+value.
+
+```puppet
+class { 'bastionvault::client':
+  server_url     => 'https://vault.example.com:4200',
+  ca_cert_base64 => lookup('vault_ca_b64'),   # or ca_cert_content / ca_cert_source
+}
+```
+
+`server_url` may also be a bare cluster DNS name to use the CLI's
+SRV-based discovery (`_bvault._tcp.<name>`).
+
+Package delivery options:
+
+```puppet
+# From a yum repository:
+class { 'bastionvault::client':
+  server_url   => 'https://vault.example.com:4200',
+  manage_repo  => true,
+  repo_baseurl => 'https://repo.example.com/bastionvault/el9',
+  repo_gpgkey  => 'https://repo.example.com/bastionvault/RPM-GPG-KEY',
+}
+
+# From a direct RPM URL (dnf resolves dependencies):
+class { 'bastionvault::client':
+  server_url     => 'https://vault.example.com:4200',
+  package_source => 'https://github.com/ffquintella/BastionVault/releases/download/v0.9.0/bastionvault-0.9.0-1.x86_64.rpm',
+}
+```
+
+Do **not** include `bastionvault::client` on a node that also includes
+the server class: the server already ships its own podman-exec wrapper at
+`/usr/local/bin/bvault`, and the catalog will fail with a duplicate File
+declaration.
+
+Login tokens need no extra plumbing on client machines — `bvault login`
+persists to `~/.vault-token` (or `$BVAULT_TOKEN_FILE`) per user.
+
 ## Development
 
 ```sh

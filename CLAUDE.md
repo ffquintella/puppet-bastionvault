@@ -42,6 +42,15 @@ regent DSL — what works and what doesn't (verified empirically):
 - **`Sensitive#unwrap` inside EPP renders `undef`** under regent — unwrap in
   the manifest and pass the plain string to `epp()` (see `config.pp`, which
   passes the already-unwrapped Raft/API secrets).
+- **`undef` interpolated via `<%= %>` renders the literal string `undef`**
+  under regent (real Puppet renders an empty string). Likewise,
+  **template-local variable assignments in `<%- -%>` code blocks render
+  `undef`**. Normalize optionals to plain strings in the manifest and pass
+  them through `epp()` args (see `client.pp`, which maps undef → `''`).
+- **Regex literals containing `{`/`}` fail under regent** — its matcher is
+  Rust's regex crate, and Ruby's `%r{}` strips `\{`/`\}` escapes before
+  handoff, producing "repetition quantifier" parse errors. Match a
+  brace-free substring instead.
 - **Complex param types don't fully validate**: `$nodes` is
   `Array[Struct[{... Stdlib::Host ...}]]`, which regent's checker rejects, so
   **HA (`mode => 'ha'`) catalogs won't compile under regent**. HA rendering is
