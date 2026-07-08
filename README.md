@@ -91,19 +91,18 @@ them from Hiera eyaml or an external secret store.
 
 Wraps the barrier KEK under an HSM so the server auto-unseals on start with no
 operator shares (BastionVault v0.24.0+). Leave `hsm_backend` unset to stay on
-Shamir unseal (the default). **The image must be built with the matching Cargo
-feature** — the stock image has no HSM code. Build a mock-enabled image with the
-`container-image-hml` make target in the BastionVault repo (tags `:<version>-hml`
-and `:hml`).
+Shamir unseal (the default). The **official image ships both HSM backends baked
+in** — one image serves production and homologation, and the active backend is
+chosen entirely by `hsm_backend`. No special image build is required.
 
 ### Mock backend (dev / homolog)
 
-Software-only, **no hardware protection**; the server refuses it when
-`BVAULT_ENV=production`.
+Software-only, **no hardware protection**; the server refuses to start with the
+mock when `BVAULT_ENV=production` (or `environment = "production"`), so a
+production node must use `yubihsm2` (or Shamir).
 
 ```puppet
 class { 'bastionvault':
-  image_tag   => '0.24.0-hml',   # image built --features hsm_mock
   hsm_backend => 'mock',
   # hsm_node_id defaults to the hostname; single node needs nothing else.
 }

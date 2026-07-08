@@ -114,8 +114,8 @@ plugin_runtime_dir = "<%= $plugin_runtime_dir %>"
 
 # HSM auto-unseal (spec: BastionVault features/hsm-support.md). At init the
 # barrier KEK is wrapped under the HSM; on restart the server auto-unseals
-# with no operator shares. Requires an image built with the matching Cargo
-# feature (hsm_mock / hsm_yubihsm2).
+# with no operator shares. The official image ships both HSM backends
+# (hsm_mock / hsm_yubihsm2) baked in; the active one is selected here.
 hsm "<%= $hsm_backend %>" {
 <%-   if $hsm_backend == 'yubihsm2' { -%>
   connector   = "<%= $hsm_connector %>"

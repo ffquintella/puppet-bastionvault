@@ -47,7 +47,8 @@ bastionvault::plugin_runtime_dir: '/var/lib/bvault/plugin-run'
 
 # ── HSM auto-unseal ──────────────────────────────────────────────────────────
 # Leave $hsm_backend unset (~) to stay on Shamir unseal (default). Set to 'mock'
-# (dev/homolog; image must be built with the hsm_mock feature) or 'yubihsm2'.
+# (dev/homolog; refuses to run in production) or 'yubihsm2'. The official image
+# ships both backends, so no special image build is needed.
 bastionvault::hsm_backend: ~
 bastionvault::hsm_recovery: 'none'
 bastionvault::hsm_mock_state_path: '/var/lib/bvault/data/mock-hsm.json'

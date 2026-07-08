@@ -110,9 +110,9 @@
 #   server on Shamir unseal (operator enters shares). `mock` uses the software
 #   mock HSM (dev/homolog only — no hardware protection; the server refuses it
 #   when BVAULT_ENV=production). `yubihsm2` uses a real YubiHSM 2 over a
-#   yubihsm-connector. REQUIRES an image built with the matching Cargo feature
-#   (`hsm_mock` / `hsm_yubihsm2`) — the stock image has no HSM code. See the
-#   `container-image-hml` make target in the BastionVault repo for a mock build.
+#   yubihsm-connector. The official container image ships both HSM backends
+#   baked in, so no special image is needed; the mock still refuses to run when
+#   the environment is production.
 # @param hsm_node_id Stable per-node HSM identity written into the seal record
 #   and every wrap context. Defaults to the container hostname. In an HA cluster
 #   backed by the *mock* it MUST be set to the SAME value on every node (see
@@ -279,7 +279,7 @@ class bastionvault (
 
   Optional[Stdlib::Absolutepath]               $plugin_runtime_dir = '/var/lib/bvault/plugin-run',
 
-  # ── HSM auto-unseal (BastionVault v0.24.0+; needs an hsm_mock/hsm_yubihsm2 image) ──
+  # ── HSM auto-unseal (BastionVault v0.24.0+; both backends baked into the stock image) ──
   Optional[Enum['mock', 'yubihsm2']]           $hsm_backend             = undef,
   Optional[String[1]]                          $hsm_node_id             = undef,
   Enum['none', 'shamir-ceremony']              $hsm_recovery            = 'none',
