@@ -106,6 +106,51 @@
 #   the server creates it on first use. Set to undef to omit the key and fall
 #   back to the server's OS-temp-dir default. On read-only-rootfs deployments,
 #   override this with a path backed by a writable, exec-allowed bind mount.
+# @param hsm_backend HSM auto-unseal backend. `undef` (default) leaves the
+#   server on Shamir unseal (operator enters shares). `mock` uses the software
+#   mock HSM (dev/homolog only — no hardware protection; the server refuses it
+#   when BVAULT_ENV=production). `yubihsm2` uses a real YubiHSM 2 over a
+#   yubihsm-connector. REQUIRES an image built with the matching Cargo feature
+#   (`hsm_mock` / `hsm_yubihsm2`) — the stock image has no HSM code. See the
+#   `container-image-hml` make target in the BastionVault repo for a mock build.
+# @param hsm_node_id Stable per-node HSM identity written into the seal record
+#   and every wrap context. Defaults to the container hostname. In an HA cluster
+#   backed by the *mock* it MUST be set to the SAME value on every node (see
+#   $hsm_mock_state_content); with real per-node YubiHSMs each node uses its own.
+# @param hsm_recovery Recovery posture recorded at init: `none` (losing every
+#   cluster HSM makes the vault unrecoverable — the intended auto-unseal
+#   posture) or `shamir-ceremony` (an offline recovery-share set is produced).
+# @param hsm_pqc_key_cache_ttl Optional cache TTL for PQC custody keys, e.g.
+#   `'60s'` / `'500ms'` / `'0'` to disable. Omitted ⇒ server default (60s).
+# @param hsm_domains Optional YubiHSM domain list the objects live in. Omitted
+#   ⇒ `[1]`. Mock ignores it.
+# @param hsm_auth_key_id Optional override for the auth key object id (default 1).
+# @param hsm_wrap_barrier_key_id Optional override for the barrier-KEK wrap key
+#   object id (default 2).
+# @param hsm_wrap_pqc_key_id Optional override for the PQC wrap key id (default 3).
+# @param hsm_identity_key_id Optional override for the identity key id (default 4).
+# @param hsm_authz_key_id Optional override for the authz key id (default 5).
+# @param hsm_mock_state_path In-container path where the mock persists its
+#   object store. Must live under the data volume (`/var/lib/bvault/data`) so it
+#   survives restarts; when $hsm_mock_state_content is supplied the module writes
+#   the file to the host path that maps here.
+# @param hsm_mock_state_content Literal JSON of a provisioned mock device
+#   (serial + wrap/identity/authz keys). Supply this to PIN device material —
+#   required to run the mock on an HA cluster, where every node must load
+#   byte-identical material (and share $hsm_node_id) so peers can unwrap the
+#   replicated KEK. Provision once (`bvault server` + `bvault operator init` on
+#   one node), copy the resulting mock-hsm.json here, distribute to all nodes.
+#   Sensitive — never rendered in diffs. Omit for a single node to let the mock
+#   self-provision on first boot.
+# @param hsm_mock_state_base64 Base64-encoded form of $hsm_mock_state_content
+#   (convenient via Hiera/eyaml). Ignored if $hsm_mock_state_content is set.
+# @param hsm_connector YubiHSM connector URL (e.g. `http://127.0.0.1:12345`).
+#   REQUIRED for `yubihsm2`. Under host networking a connector on the host's
+#   loopback is reachable from the container as-is.
+# @param hsm_password YubiHSM authentication password for $hsm_auth_key_id.
+#   REQUIRED for `yubihsm2`. Sensitive — injected into the container via an
+#   EnvironmentFile and referenced from config.hcl as `env:BASTIONVAULT_HSM_PASSWORD`,
+#   never written into config.hcl in the clear.
 # @param manage_selinux  Manage SELinux fcontext entries for module-owned paths.
 # @param manage_firewall Open $listen_port in firewalld (off by default).
 # @param mount_host_ca_bundle When true, bind-mount the host's system CA trust
@@ -234,6 +279,27 @@ class bastionvault (
 
   Optional[Stdlib::Absolutepath]               $plugin_runtime_dir = '/var/lib/bvault/plugin-run',
 
+  # ── HSM auto-unseal (BastionVault v0.24.0+; needs an hsm_mock/hsm_yubihsm2 image) ──
+  Optional[Enum['mock', 'yubihsm2']]           $hsm_backend             = undef,
+  Optional[String[1]]                          $hsm_node_id             = undef,
+  Enum['none', 'shamir-ceremony']              $hsm_recovery            = 'none',
+  Optional[String[1]]                          $hsm_pqc_key_cache_ttl   = undef,
+  Optional[Array[Integer[0, 65535]]]           $hsm_domains             = undef,
+  Optional[Integer[0, 65535]]                  $hsm_auth_key_id         = undef,
+  Optional[Integer[0, 65535]]                  $hsm_wrap_barrier_key_id = undef,
+  Optional[Integer[0, 65535]]                  $hsm_wrap_pqc_key_id     = undef,
+  Optional[Integer[0, 65535]]                  $hsm_identity_key_id     = undef,
+  Optional[Integer[0, 65535]]                  $hsm_authz_key_id        = undef,
+
+  # mock backend
+  Stdlib::Absolutepath                         $hsm_mock_state_path     = '/var/lib/bvault/data/mock-hsm.json',
+  Optional[Variant[Sensitive[String], String]] $hsm_mock_state_content  = undef,
+  Optional[Variant[Sensitive[String], String]] $hsm_mock_state_base64   = undef,
+
+  # yubihsm2 backend
+  Optional[String[1]]                          $hsm_connector           = undef,
+  Optional[Variant[Sensitive[String[1]], String[1]]] $hsm_password      = undef,
+
   Boolean                                      $manage_selinux  = true,
   Boolean                                      $manage_firewall = false,
 
@@ -303,6 +369,42 @@ class bastionvault (
       if $n['api_host'] in ['0.0.0.0', '::', '', undef] {
         fail("bastionvault: nodes[id=${n['id']}].api_host is not a routable host. Use the peer's FQDN.")
       }
+    }
+  }
+
+  # ── HSM validation ─────────────────────────────────────────────────────
+  # Fixed env var name the container reads the YubiHSM password from; config.hcl
+  # references it as `env:...` and bastionvault::config writes it to hsm.env.
+  $hsm_password_env = 'BASTIONVAULT_HSM_PASSWORD'
+
+  if $hsm_backend == 'yubihsm2' {
+    if $hsm_connector == undef {
+      fail('bastionvault: $hsm_backend is "yubihsm2" but $hsm_connector is unset (e.g. "http://127.0.0.1:12345").')
+    }
+    if $hsm_password == undef {
+      fail('bastionvault: $hsm_backend is "yubihsm2" but $hsm_password is unset.')
+    }
+  }
+
+  if $hsm_backend == 'mock' {
+    # The mock gives NO hardware protection and every node in a cluster must
+    # present byte-identical device material (same wrap-barrier + bv-authz
+    # keys) under a shared node_id, because the wrapped KEK blob is bound to
+    # both the wrapping device's authz-key fingerprint and the node_id. Enforce
+    # that operators pin the material and the id when running mock in HA.
+    if $mode == 'ha' {
+      if $hsm_node_id == undef {
+        fail('bastionvault: mock HSM in HA requires $hsm_node_id — set the SAME value on every node (the seal record is keyed by it and it is bound into every wrap context).')
+      }
+      if $hsm_mock_state_content == undef and $hsm_mock_state_base64 == undef {
+        fail('bastionvault: mock HSM in HA requires $hsm_mock_state_content/$hsm_mock_state_base64 — every node must load byte-identical mock device material so peers can unwrap the replicated KEK. Provision once (`bvault server` + `bvault operator init` on one node), then distribute that mock-hsm.json to all nodes.')
+      }
+    }
+    # When pinning material, we place the file on the host path that maps into
+    # the container's data volume; require the in-container path to live there.
+    if ($hsm_mock_state_content != undef or $hsm_mock_state_base64 != undef)
+    and $hsm_mock_state_path !~ /\A\/var\/lib\/bvault\/data\// {
+      fail("bastionvault: \$hsm_mock_state_path must be under /var/lib/bvault/data/ when supplying \$hsm_mock_state_content (so the file lands in the mounted data volume); got '${hsm_mock_state_path}'.")
     }
   }
 
@@ -454,6 +556,51 @@ class bastionvault (
   $api_addr_effective = $api_addr ? {
     undef   => "https://${facts['networking']['fqdn']}:${listen_port}",
     default => $api_addr,
+  }
+
+  # ── HSM effective values ───────────────────────────────────────────────
+  # YubiHSM password → Sensitive (for the hsm.env EnvironmentFile).
+  $hsm_password_sensitive = $hsm_password ? {
+    undef     => undef,
+    Sensitive => $hsm_password,
+    default   => Sensitive($hsm_password),
+  }
+
+  # Mock device material: literal content wins, else decode base64. Kept
+  # Sensitive because it holds the raw wrap/authz/identity key bytes.
+  $_hsm_state_b64_unwrapped = $hsm_mock_state_base64 ? {
+    undef     => undef,
+    Sensitive => $hsm_mock_state_base64.unwrap,
+    default   => $hsm_mock_state_base64,
+  }
+  $_hsm_state_content_raw = $hsm_mock_state_content ? {
+    undef     => undef,
+    Sensitive => $hsm_mock_state_content.unwrap,
+    default   => $hsm_mock_state_content,
+  }
+  $hsm_mock_state_content_effective = $_hsm_state_content_raw ? {
+    undef   => $_hsm_state_b64_unwrapped ? {
+      undef   => undef,
+      default => Sensitive(base64('decode', $_hsm_state_b64_unwrapped)),
+    },
+    default => Sensitive($_hsm_state_content_raw),
+  }
+
+  # Host path that maps to $hsm_mock_state_path inside the container. Only used
+  # when pinning material; validated above to live under the data volume.
+  $hsm_mock_state_host_path = regsubst($hsm_mock_state_path, '\A/var/lib/bvault/data', $data_dir)
+
+  # Host path of the YubiHSM password EnvironmentFile.
+  $hsm_env_file = "${config_dir}/hsm.env"
+
+  # Effective object ids (undef ⇒ server default; a 0 value is treated as
+  # "use default" server-side, so undef here simply omits the key).
+  $hsm_object_ids = {
+    'auth_key_id'         => $hsm_auth_key_id,
+    'wrap_barrier_key_id' => $hsm_wrap_barrier_key_id,
+    'wrap_pqc_key_id'     => $hsm_wrap_pqc_key_id,
+    'identity_key_id'     => $hsm_identity_key_id,
+    'authz_key_id'        => $hsm_authz_key_id,
   }
 
   # Sub-port warning (rootless cannot bind <1024 by default).

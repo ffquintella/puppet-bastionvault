@@ -24,6 +24,15 @@
       Integer[0]                    $log_rotate_keep,
       Stdlib::Absolutepath          $pid_file,
       Optional[Stdlib::Absolutepath] $plugin_runtime_dir,
+      Optional[Enum['mock','yubihsm2']] $hsm_backend,
+      Optional[String[1]]           $hsm_connector,
+      String[1]                     $hsm_password_env,
+      Optional[Array[Integer[0,65535]]] $hsm_domains,
+      Optional[String[1]]           $hsm_node_id,
+      Enum['none','shamir-ceremony'] $hsm_recovery,
+      Optional[String[1]]           $hsm_pqc_key_cache_ttl,
+      Stdlib::Absolutepath          $hsm_mock_state_path,
+      Hash[String[1], Optional[Integer[0,65535]]] $hsm_object_ids,
 | -%>
 <%- # BastionVault config.hcl — rendered by Puppet. Mirrors the schema in
     # ../BastionVault/config/{single-node,ha-cluster}.hcl exactly.
@@ -100,4 +109,38 @@ pid_file  = "<%= $pid_file %>"
 # exec-allowed and the server creates it on first use. (WASM plugins never exec
 # and are unaffected.) Overridable at runtime via BV_PLUGIN_RUNTIME_DIR.
 plugin_runtime_dir = "<%= $plugin_runtime_dir %>"
+<%- } -%>
+<%- if $hsm_backend { -%>
+
+# HSM auto-unseal (spec: BastionVault features/hsm-support.md). At init the
+# barrier KEK is wrapped under the HSM; on restart the server auto-unseals
+# with no operator shares. Requires an image built with the matching Cargo
+# feature (hsm_mock / hsm_yubihsm2).
+hsm "<%= $hsm_backend %>" {
+<%-   if $hsm_backend == 'yubihsm2' { -%>
+  connector   = "<%= $hsm_connector %>"
+  # Password is read from the environment (injected via the EnvironmentFile),
+  # never stored in this file in the clear.
+  password    = "env:<%= $hsm_password_env %>"
+<%-     if $hsm_domains and !empty($hsm_domains) { -%>
+  domains     = [<%= $hsm_domains.join(', ') %>]
+<%-     } -%>
+<%-   } else { -%>
+  # Software mock — NO hardware protection; dev/homolog only. On an HA cluster
+  # every node must carry byte-identical material at this path and share node_id.
+  state_path  = "<%= $hsm_mock_state_path %>"
+<%-   } -%>
+<%-   if $hsm_node_id { -%>
+  node_id     = "<%= $hsm_node_id %>"
+<%-   } -%>
+<%-   if $hsm_recovery != 'none' { -%>
+  recovery    = "<%= $hsm_recovery %>"
+<%-   } -%>
+<%-   if $hsm_pqc_key_cache_ttl { -%>
+  pqc_key_cache_ttl = "<%= $hsm_pqc_key_cache_ttl %>"
+<%-   } -%>
+<%-   $hsm_object_ids.each |$k, $v| { if $v != undef { -%>
+  <%= sprintf('%-19s', $k) %> = <%= $v %>
+<%-   } } -%>
+}
 <%- } -%>

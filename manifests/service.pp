@@ -68,6 +68,12 @@ class bastionvault::service {
           'mount_host_ca_bundle'     => $bastionvault::mount_host_ca_bundle,
           'host_ca_bundle_effective' => $bastionvault::host_ca_bundle_effective,
           'log_level'                => $bastionvault::log_level,
+          # Only load the password EnvironmentFile for the real HSM (the mock
+          # needs no secret); undef omits the EnvironmentFile= line entirely.
+          'hsm_env_file'             => $bastionvault::hsm_backend ? {
+            'yubihsm2' => $bastionvault::hsm_env_file,
+            default    => undef,
+          },
       }),
       notify  => Exec['bastionvault-user-daemon-reload'],
     }

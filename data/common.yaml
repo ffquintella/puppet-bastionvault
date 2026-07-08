@@ -45,6 +45,24 @@ bastionvault::pid_file: '/var/run/bvault.pid'
 # OS-temp-dir default; override to a writable exec mount under read-only rootfs.
 bastionvault::plugin_runtime_dir: '/var/lib/bvault/plugin-run'
 
+# ── HSM auto-unseal ──────────────────────────────────────────────────────────
+# Leave $hsm_backend unset (~) to stay on Shamir unseal (default). Set to 'mock'
+# (dev/homolog; image must be built with the hsm_mock feature) or 'yubihsm2'.
+bastionvault::hsm_backend: ~
+bastionvault::hsm_recovery: 'none'
+bastionvault::hsm_mock_state_path: '/var/lib/bvault/data/mock-hsm.json'
+# HA + mock example (each node needs the SAME node_id and the SAME pinned
+# device material — provision once, distribute the JSON via eyaml):
+#   bastionvault::hsm_backend: 'mock'
+#   bastionvault::hsm_node_id: 'hml'
+#   bastionvault::hsm_mock_state_base64: >
+#     ENC[eyaml...base64 of mock-hsm.json...]
+# YubiHSM 2 example:
+#   bastionvault::hsm_backend: 'yubihsm2'
+#   bastionvault::hsm_connector: 'http://127.0.0.1:12345'
+#   bastionvault::hsm_password: >
+#     ENC[PKCS7,...]
+
 bastionvault::manage_selinux: true
 bastionvault::manage_firewall: false
 

@@ -11,8 +11,12 @@ usage() {
 Usage: bvault-ctl <command>
 
 Commands:
-  status    Report whether the bastionvault service and container are running.
-  restart   Restart the bastionvault service.
+  status      Report whether the bastionvault service and container are running.
+  restart     Restart the bastionvault service.
+  hsm-status  Show the HSM seal posture (seal type, backend, device serial,
+              cluster epoch, enrolled nodes). Requires a valid login token;
+              run 'bvault login ...' first. Proxies to
+              'bvault operator hsm status'.
 EOF
 }
 
@@ -46,9 +50,17 @@ cmd_restart() {
   exec /usr/bin/sudo -n /usr/bin/systemctl restart bastionvault.service
 }
 
+# Delegate to the token-aware CLI wrapper (/usr/local/bin/bvault), which handles
+# the sudo + podman exec + per-user token injection. `operator hsm status` is an
+# authenticated sys endpoint, so it needs a token the wrapper supplies.
+cmd_hsm_status() {
+  exec /usr/local/bin/bvault operator hsm status "$@"
+}
+
 case "${1:-}" in
   status)        shift; cmd_status "$@" ;;
   restart)       shift; cmd_restart "$@" ;;
+  hsm-status)    shift; cmd_hsm_status "$@" ;;
   ''|-h|--help)  usage ;;
   *)             echo "bvault-ctl: unknown command '$1'" >&2; usage >&2; exit 2 ;;
 esac

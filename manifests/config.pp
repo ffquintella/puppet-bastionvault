@@ -71,8 +71,47 @@ class bastionvault::config {
         'log_rotate_keep'                      => $bastionvault::log_rotate_keep,
         'pid_file'                             => $bastionvault::pid_file,
         'plugin_runtime_dir'                   => $bastionvault::plugin_runtime_dir,
+        'hsm_backend'                          => $bastionvault::hsm_backend,
+        'hsm_connector'                        => $bastionvault::hsm_connector,
+        'hsm_password_env'                     => $bastionvault::hsm_password_env,
+        'hsm_domains'                          => $bastionvault::hsm_domains,
+        'hsm_node_id'                          => $bastionvault::hsm_node_id,
+        'hsm_recovery'                         => $bastionvault::hsm_recovery,
+        'hsm_pqc_key_cache_ttl'                => $bastionvault::hsm_pqc_key_cache_ttl,
+        'hsm_mock_state_path'                  => $bastionvault::hsm_mock_state_path,
+        'hsm_object_ids'                       => $bastionvault::hsm_object_ids,
     }),
     show_diff => false,
+  }
+
+  # ── HSM material ─────────────────────────────────────────────────────────
+  # mock: pinned device material (cluster clone / reproducible dev). Written to
+  # the host path that maps into the container's data volume so the mock reads
+  # it on start and — being complete — never rewrites it. When no content is
+  # supplied the mock self-provisions at this path on first boot (single node).
+  if $bastionvault::hsm_backend == 'mock' and $bastionvault::hsm_mock_state_content_effective != undef {
+    file { $bastionvault::hsm_mock_state_host_path:
+      ensure    => file,
+      owner     => $user,
+      group     => $group,
+      mode      => '0600',
+      content   => $bastionvault::hsm_mock_state_content_effective,
+      show_diff => false,
+    }
+  }
+
+  # yubihsm2: password injected as an EnvironmentFile so it never lands in the
+  # world-inspectable Quadlet unit or in config.hcl. config.hcl references it as
+  # env:BASTIONVAULT_HSM_PASSWORD; the Quadlet loads this file at container start.
+  if $bastionvault::hsm_backend == 'yubihsm2' and $bastionvault::hsm_password_sensitive != undef {
+    file { $bastionvault::hsm_env_file:
+      ensure    => file,
+      owner     => $user,
+      group     => $group,
+      mode      => '0600',
+      content   => Sensitive("${bastionvault::hsm_password_env}=${bastionvault::hsm_password_sensitive.unwrap}\n"),
+      show_diff => false,
+    }
   }
 
   if !$bastionvault::tls_disable {

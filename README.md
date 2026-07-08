@@ -16,6 +16,8 @@ Full design lives in [docs/specs.md](docs/specs.md).
   stack with published ports.
 - Creates a non-root system user (`bastionvault`) with systemd lingering.
 - Renders `config.hcl` (single-node or HA / hiqlite Raft) from parameters.
+- Optionally configures HSM auto-unseal (mock or YubiHSM 2) — see
+  [HSM auto-unseal](#hsm-auto-unseal).
 - Installs a Quadlet `.container` unit under the user's systemd manager.
 - Sets SELinux `container_file_t` on the data, config, TLS, and log dirs.
 - Drops a cgroups v2 slice override with `MemoryMax`, `CPUQuota`,
@@ -84,6 +86,84 @@ them from Hiera eyaml or an external secret store.
 > rebootstrap. The module enforces uniform ports across `$nodes` and
 > refuses `0.0.0.0` as a routable host to make this class of drift loud
 > at compile time.
+
+## HSM auto-unseal
+
+Wraps the barrier KEK under an HSM so the server auto-unseals on start with no
+operator shares (BastionVault v0.24.0+). Leave `hsm_backend` unset to stay on
+Shamir unseal (the default). **The image must be built with the matching Cargo
+feature** — the stock image has no HSM code. Build a mock-enabled image with the
+`container-image-hml` make target in the BastionVault repo (tags `:<version>-hml`
+and `:hml`).
+
+### Mock backend (dev / homolog)
+
+Software-only, **no hardware protection**; the server refuses it when
+`BVAULT_ENV=production`.
+
+```puppet
+class { 'bastionvault':
+  image_tag   => '0.24.0-hml',   # image built --features hsm_mock
+  hsm_backend => 'mock',
+  # hsm_node_id defaults to the hostname; single node needs nothing else.
+}
+```
+
+On first boot the mock self-provisions its key store at
+`/var/lib/bvault/data/mock-hsm.json` (inside the data volume, so it survives
+restarts). Then run `bvault operator init` once — it returns **no** unseal
+shares, and every restart auto-unseals.
+
+### YubiHSM 2 backend (production)
+
+```puppet
+class { 'bastionvault':
+  hsm_backend   => 'yubihsm2',
+  hsm_connector => 'http://127.0.0.1:12345',   # yubihsm-connector on the host
+  hsm_password  => Sensitive('...'),            # via Hiera/eyaml in practice
+  hsm_auth_key_id => 1,                          # optional; default 1
+  hsm_domains     => [1],                        # optional; default [1]
+}
+```
+
+Under the default `host` networking a connector on the host's loopback is
+reachable from the container. The password is written to a 0600 `hsm.env`
+EnvironmentFile and referenced from `config.hcl` as
+`env:BASTIONVAULT_HSM_PASSWORD` — never rendered into `config.hcl` in the clear.
+
+### HA cluster with the mock
+
+Each node runs its own mock "device", and the wrapped KEK is bound to the
+wrapping device's identity **and** the `node_id`. So to unseal a cluster off the
+mock, every node must present **byte-identical device material** under a
+**shared `node_id`** (this mirrors a real YubiHSM shared-wrap-key domain; true
+per-node enrollment is not yet wired in the server). The module enforces both:
+
+1. Provision once — start one node with `hsm_backend => 'mock'`, let it write
+   `mock-hsm.json`, then `bvault operator init`.
+2. Base64 that file into Hiera/eyaml and pin it on **every** node, with the
+   **same** `hsm_node_id`:
+
+```puppet
+class { 'bastionvault':
+  mode                   => 'ha',
+  # ... nodes / node_id as usual ...
+  hsm_backend            => 'mock',
+  hsm_node_id            => 'hml',                       # SAME on all nodes
+  hsm_mock_state_base64  => Sensitive($mock_hsm_b64),    # SAME on all nodes
+}
+```
+
+The seal record replicates over Raft; peers unwrap the shared KEK with their
+identical device and auto-unseal. Puppet fails compilation if `hsm_node_id` or
+the pinned material is missing in HA + mock.
+
+### Checking status
+
+`bvault-ctl hsm-status` (added to the host helper) proxies to
+`bvault operator hsm status` — reporting seal type, backend, device serial,
+cluster epoch and enrolled-node count. It needs a login token, so run
+`bvault login ...` first.
 
 ## TLS material
 

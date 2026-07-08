@@ -139,6 +139,64 @@ if catalog_harness == :regent
       end
     end
 
+    context 'with no HSM (default)' do
+      it 'renders no hsm block' do
+        is_expected.to contain_file(config).without_content(%r{hsm "})
+      end
+    end
+
+    context 'with the mock HSM backend (single node)' do
+      let(:params) { { hsm_backend: 'mock' } }
+
+      it 'renders an hsm "mock" block pointing at the data-volume state path' do
+        is_expected.to contain_file(config)
+          .with_content(%r{hsm "mock"})
+          .with_content(%r{state_path\s*=\s*"/var/lib/bvault/data/mock-hsm.json"})
+      end
+    end
+
+    context 'with the mock HSM backend, node_id + recovery' do
+      let(:params) do
+        { hsm_backend: 'mock', hsm_node_id: 'hml', hsm_recovery: 'shamir-ceremony' }
+      end
+
+      it 'renders node_id and recovery' do
+        is_expected.to contain_file(config)
+          .with_content(%r{node_id\s*=\s*"hml"})
+          .with_content(%r{recovery\s*=\s*"shamir-ceremony"})
+      end
+    end
+    # NOTE: object-id override rendering (the $hsm_object_ids hash iteration) is
+    # asserted only in the rspec-puppet branch — regent's Artichoke Ruby
+    # mishandles a mostly-undef hash and cannot inject the override param, so it
+    # renders a spurious `undef = undef`. Verified correct under real Puppet.
+
+    context 'with the yubihsm2 HSM backend' do
+      let(:params) do
+        { hsm_backend: 'yubihsm2', hsm_connector: 'http://127.0.0.1:12345', hsm_password: 'sekret' }
+      end
+
+      it 'renders an hsm "yubihsm2" block with connector and env-ref password' do
+        is_expected.to contain_file(config)
+          .with_content(%r{hsm "yubihsm2"})
+          .with_content(%r{connector\s*=\s*"http://127\.0\.0\.1:12345"})
+          .with_content(%r{password\s*=\s*"env:BASTIONVAULT_HSM_PASSWORD"})
+      end
+
+      it 'loads the password EnvironmentFile in the Quadlet' do
+        is_expected.to contain_file(quadlet)
+          .with_content(%r{EnvironmentFile=/srv/application-config/bastionvault/hsm.env})
+      end
+
+      it 'writes the hsm.env password file 0600' do
+        is_expected.to contain_file('/srv/application-config/bastionvault/hsm.env').with('mode' => '0600')
+      end
+    end
+
+    it 'exposes hsm-status in the bvault-ctl helper' do
+      is_expected.to contain_file('/usr/local/bin/bvault-ctl').with_content(%r{hsm-status})
+    end
+
     # NOTE: mode=ha is NOT exercised here. The $nodes parameter is typed
     # Array[Struct[{ id, raft_host => Stdlib::Host, ... }]]; regent's type
     # checker cannot validate that nested Struct/Stdlib::Host alias and
@@ -440,6 +498,127 @@ describe 'bastionvault' do
             '/var/lib/bastionvault/.config/containers/systemd/bastionvault.container',
           ).with_content(%r{PublishPort=9200:8200})
         end
+      end
+
+      # ── HSM ────────────────────────────────────────────────────────────
+      config_hcl = '/srv/application-config/bastionvault/config.hcl'
+      quadlet_unit = '/var/lib/bastionvault/.config/containers/systemd/bastionvault.container'
+
+      context 'with the mock HSM backend (single node)' do
+        let(:params) { { hsm_backend: 'mock' } }
+
+        it { is_expected.to compile.with_all_deps }
+
+        it 'renders an hsm "mock" block' do
+          is_expected.to contain_file(config_hcl)
+            .with_content(%r{hsm "mock"})
+            .with_content(%r{state_path\s*=\s*"/var/lib/bvault/data/mock-hsm.json"})
+        end
+
+        it 'does not manage a state file when material is not pinned' do
+          is_expected.not_to contain_file('/srv/application-data/bastionvault/mock-hsm.json')
+        end
+      end
+
+      context 'with the mock HSM backend and an object-id override' do
+        let(:params) { { hsm_backend: 'mock', hsm_wrap_barrier_key_id: 12 } }
+
+        it 'renders only the overridden object id and omits the undef ones' do
+          is_expected.to contain_file(config_hcl)
+            .with_content(%r{wrap_barrier_key_id\s*=\s*12})
+            .without_content(%r{auth_key_id})
+            .without_content(%r{undef})
+        end
+      end
+
+      context 'with the yubihsm2 HSM backend' do
+        let(:params) do
+          { hsm_backend: 'yubihsm2', hsm_connector: 'http://127.0.0.1:12345', hsm_password: sensitive('sekret') }
+        end
+
+        it { is_expected.to compile.with_all_deps }
+
+        it 'renders the yubihsm2 block referencing the password env var' do
+          is_expected.to contain_file(config_hcl)
+            .with_content(%r{hsm "yubihsm2"})
+            .with_content(%r{connector\s*=\s*"http://127\.0\.0\.1:12345"})
+            .with_content(%r{password\s*=\s*"env:BASTIONVAULT_HSM_PASSWORD"})
+        end
+
+        it 'writes the password EnvironmentFile and loads it in the Quadlet' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/hsm.env').with('mode' => '0600')
+          is_expected.to contain_file(quadlet_unit)
+            .with_content(%r{EnvironmentFile=/srv/application-config/bastionvault/hsm.env})
+        end
+      end
+
+      context 'with yubihsm2 but no connector' do
+        let(:params) { { hsm_backend: 'yubihsm2', hsm_password: sensitive('x') } }
+
+        it { is_expected.to compile.and_raise_error(%r{\$hsm_connector is unset}) }
+      end
+
+      context 'with yubihsm2 but no password' do
+        let(:params) { { hsm_backend: 'yubihsm2', hsm_connector: 'http://127.0.0.1:12345' } }
+
+        it { is_expected.to compile.and_raise_error(%r{\$hsm_password is unset}) }
+      end
+
+      context 'with mock HSM in HA and pinned material + shared node_id' do
+        let(:params) do
+          {
+            mode:                   'ha',
+            node_id:                1,
+            nodes:                  [
+              { 'id' => 1, 'raft_host' => '10.0.0.11', 'raft_port' => 8210, 'api_host' => '10.0.0.11', 'api_port' => 8220 },
+            ],
+            hsm_backend:            'mock',
+            hsm_node_id:            'hml',
+            hsm_mock_state_content: '{"serial":"MOCK-abc","objects":{}}',
+          }
+        end
+
+        it { is_expected.to compile.with_all_deps }
+
+        it 'writes the pinned mock state into the data volume host path' do
+          is_expected.to contain_file('/srv/application-data/bastionvault/mock-hsm.json').with('mode' => '0600')
+        end
+
+        it 'shares the node_id across the cluster in config.hcl' do
+          is_expected.to contain_file(config_hcl).with_content(%r{node_id\s*=\s*"hml"})
+        end
+      end
+
+      context 'with mock HSM in HA but no shared node_id' do
+        let(:params) do
+          {
+            mode:                   'ha',
+            node_id:                1,
+            nodes:                  [
+              { 'id' => 1, 'raft_host' => '10.0.0.11', 'raft_port' => 8210, 'api_host' => '10.0.0.11', 'api_port' => 8220 },
+            ],
+            hsm_backend:            'mock',
+            hsm_mock_state_content: '{"serial":"MOCK-abc"}',
+          }
+        end
+
+        it { is_expected.to compile.and_raise_error(%r{mock HSM in HA requires \$hsm_node_id}) }
+      end
+
+      context 'with mock HSM in HA but no pinned material' do
+        let(:params) do
+          {
+            mode:        'ha',
+            node_id:     1,
+            nodes:       [
+              { 'id' => 1, 'raft_host' => '10.0.0.11', 'raft_port' => 8210, 'api_host' => '10.0.0.11', 'api_port' => 8220 },
+            ],
+            hsm_backend: 'mock',
+            hsm_node_id: 'hml',
+          }
+        end
+
+        it { is_expected.to compile.and_raise_error(%r{requires \$hsm_mock_state_content}) }
       end
     end
   end

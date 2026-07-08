@@ -16,6 +16,7 @@
       Boolean              $mount_host_ca_bundle,
       Stdlib::Absolutepath $host_ca_bundle_effective,
       String[1]            $log_level,
+      Optional[Stdlib::Absolutepath] $hsm_env_file,
 | -%>
 [Unit]
 Description=BastionVault server (rootless, managed by Puppet)
@@ -66,6 +67,12 @@ Volume=<%= $host_ca_bundle_effective %>:/etc/pki/ca-trust/extracted/pem/tls-ca-b
 Volume=<%= $host_ca_bundle_effective %>:/etc/ssl/certs/ca-certificates.crt:ro,z
 <%- } -%>
 Environment=RUST_LOG=<%= $log_level %>
+<%- if $hsm_env_file { -%>
+# YubiHSM auth password (BASTIONVAULT_HSM_PASSWORD), kept out of this unit and
+# out of config.hcl. Written 0600 by bastionvault::config and loaded by the
+# rootless service user at container start.
+EnvironmentFile=<%= $hsm_env_file %>
+<%- } -%>
 
 [Service]
 Restart=on-failure
