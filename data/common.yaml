@@ -41,9 +41,11 @@ bastionvault::cluster_tls_api_no_verify: false
 bastionvault::pid_file: '/var/run/bvault.pid'
 
 # In-container, exec-allowed staging dir for process-plugin binaries. Keeps
-# plugins working when /tmp is mounted noexec. Set to ~ to use the server's
-# OS-temp-dir default; override to a writable exec mount under read-only rootfs.
-bastionvault::plugin_runtime_dir: '/var/lib/bvault/plugin-run'
+# plugins working when /tmp is mounted noexec. Sits under the persistent data
+# bind mount, which the container's non-root uid can write to (the image's own
+# /var/lib/bvault is a root-owned layer the uid cannot create dirs in). Set to ~
+# to use the server's OS-temp-dir default; override if the data volume is noexec.
+bastionvault::plugin_runtime_dir: '/var/lib/bvault/data/plugin-run'
 
 # ── HSM auto-unseal ──────────────────────────────────────────────────────────
 # Leave $hsm_backend unset (~) to stay on Shamir unseal (default). Set to 'mock'

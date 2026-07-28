@@ -16,6 +16,7 @@
       Boolean              $mount_host_ca_bundle,
       Stdlib::Absolutepath $host_ca_bundle_effective,
       String[1]            $log_level,
+      Optional[Stdlib::Absolutepath] $plugin_runtime_dir,
       Optional[Stdlib::Absolutepath] $hsm_env_file,
 | -%>
 [Unit]
@@ -67,6 +68,15 @@ Volume=<%= $host_ca_bundle_effective %>:/etc/pki/ca-trust/extracted/pem/tls-ca-b
 Volume=<%= $host_ca_bundle_effective %>:/etc/ssl/certs/ca-certificates.crt:ro,z
 <%- } -%>
 Environment=RUST_LOG=<%= $log_level %>
+<%- if $plugin_runtime_dir { -%>
+# Staging dir the process-plugin runtime execs plugin binaries from. Set here as
+# well as in config.hcl so the runtime honours it even before config is parsed;
+# the env var takes precedence. It resolves to a subdir of the data bind mount
+# (<%= $plugin_runtime_dir %>), which the container's non-root uid can write to
+# and which is exec-allowed — unlike /tmp (often noexec) or the image's own
+# root-owned /var/lib/bvault layer. The server creates the subdir on first use.
+Environment=BV_PLUGIN_RUNTIME_DIR=<%= $plugin_runtime_dir %>
+<%- } -%>
 <%- if $hsm_env_file { -%>
 # YubiHSM auth password (BASTIONVAULT_HSM_PASSWORD), kept out of this unit and
 # out of config.hcl. Written 0600 by bastionvault::config and loaded by the

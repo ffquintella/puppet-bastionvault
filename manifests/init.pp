@@ -96,16 +96,21 @@
 # @param api_addr        Public api_addr URL. Auto-derived if undef.
 # @param pid_file        Path used by the binary for its pidfile.
 # @param plugin_runtime_dir In-container directory the process-plugin runtime
-#   stages plugin executables in before spawning them (config.hcl
-#   `plugin_runtime_dir`, overridable at runtime via `BV_PLUGIN_RUNTIME_DIR`).
+#   stages plugin executables in before spawning them. The module writes it to
+#   both config.hcl (`plugin_runtime_dir`) and the Quadlet unit as the
+#   `BV_PLUGIN_RUNTIME_DIR` environment variable; the env var takes precedence
+#   and is honoured even before config.hcl is parsed.
 #   The OS temp dir (`/tmp`) is frequently mounted `noexec` in hardened
 #   containers, which makes `execve` of a process-runtime plugin (e.g.
 #   `xca-import`) fail with `EACCES`, surfacing as a generic invoke error;
 #   WASM-runtime plugins (e.g. totp) never exec and are unaffected. The default
-#   points at a writable, exec-allowed path on the container's own filesystem;
-#   the server creates it on first use. Set to undef to omit the key and fall
-#   back to the server's OS-temp-dir default. On read-only-rootfs deployments,
-#   override this with a path backed by a writable, exec-allowed bind mount.
+#   sits under the persistent data bind mount (`/var/lib/bvault/data`), which is
+#   writable by the container's non-root uid and exec-allowed; the server
+#   creates the subdir on first use. (The image's own `/var/lib/bvault` is a
+#   root-owned layer the non-root uid cannot write to, so the runtime dir must
+#   live on the data volume.) Set to undef to omit the key and fall back to the
+#   server's OS-temp-dir default. On deployments whose data volume is mounted
+#   `noexec`, override this with a path backed by a writable, exec-allowed mount.
 # @param hsm_backend HSM auto-unseal backend. `undef` (default) leaves the
 #   server on Shamir unseal (operator enters shares). `mock` uses the software
 #   mock HSM (dev/homolog only — no hardware protection; the server refuses it
@@ -277,7 +282,7 @@ class bastionvault (
   Optional[Stdlib::HTTPSUrl]                   $api_addr        = undef,
   Stdlib::Absolutepath                         $pid_file        = '/var/run/bvault.pid',
 
-  Optional[Stdlib::Absolutepath]               $plugin_runtime_dir = '/var/lib/bvault/plugin-run',
+  Optional[Stdlib::Absolutepath]               $plugin_runtime_dir = '/var/lib/bvault/data/plugin-run',
 
   # ── HSM auto-unseal (BastionVault v0.24.0+; both backends baked into the stock image) ──
   Optional[Enum['mock', 'yubihsm2']]           $hsm_backend             = undef,

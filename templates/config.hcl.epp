@@ -107,7 +107,8 @@ pid_file  = "<%= $pid_file %>"
 # spawning them. `/tmp` is often mounted noexec in hardened containers, which
 # makes execve of a process plugin fail with EACCES; this path is writable and
 # exec-allowed and the server creates it on first use. (WASM plugins never exec
-# and are unaffected.) Overridable at runtime via BV_PLUGIN_RUNTIME_DIR.
+# and are unaffected.) The Quadlet unit also exports this path as
+# BV_PLUGIN_RUNTIME_DIR, which takes precedence over this key at runtime.
 plugin_runtime_dir = "<%= $plugin_runtime_dir %>"
 <%- } -%>
 <%- if $hsm_backend { -%>

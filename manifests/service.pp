@@ -68,6 +68,10 @@ class bastionvault::service {
           'mount_host_ca_bundle'     => $bastionvault::mount_host_ca_bundle,
           'host_ca_bundle_effective' => $bastionvault::host_ca_bundle_effective,
           'log_level'                => $bastionvault::log_level,
+          # Also export the process-plugin staging dir as BV_PLUGIN_RUNTIME_DIR
+          # so the runtime honours it directly; undef omits the Environment line
+          # and leaves the server on its OS-temp default (matching config.hcl).
+          'plugin_runtime_dir'       => $bastionvault::plugin_runtime_dir,
           # Only load the password EnvironmentFile for the real HSM (the mock
           # needs no secret); undef omits the EnvironmentFile= line entirely.
           'hsm_env_file'             => $bastionvault::hsm_backend ? {

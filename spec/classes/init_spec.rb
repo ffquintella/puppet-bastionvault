@@ -101,9 +101,14 @@ if catalog_harness == :regent
         is_expected.to contain_file(config).with_content(%r{storage "hiqlite"})
       end
 
-      it 'points plugin_runtime_dir at an exec-allowed staging dir' do
+      it 'points plugin_runtime_dir at the writable data volume' do
         is_expected.to contain_file(config)
-          .with_content(%r{plugin_runtime_dir\s*=\s*"/var/lib/bvault/plugin-run"})
+          .with_content(%r{plugin_runtime_dir\s*=\s*"/var/lib/bvault/data/plugin-run"})
+      end
+
+      it 'exports the same path as BV_PLUGIN_RUNTIME_DIR in the Quadlet unit' do
+        is_expected.to contain_file(quadlet)
+          .with_content(%r{Environment=BV_PLUGIN_RUNTIME_DIR=/var/lib/bvault/data/plugin-run})
       end
     end
     # NOTE: the `plugin_runtime_dir => undef` (key-omitted) path is covered only
@@ -266,9 +271,15 @@ describe 'bastionvault' do
           )
         end
 
-        it 'renders plugin_runtime_dir pointing at an exec-allowed staging dir' do
+        it 'renders plugin_runtime_dir pointing at the writable data volume' do
           is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
-            .with_content(%r{plugin_runtime_dir\s*=\s*"/var/lib/bvault/plugin-run"})
+            .with_content(%r{plugin_runtime_dir\s*=\s*"/var/lib/bvault/data/plugin-run"})
+        end
+
+        it 'exports the same path as BV_PLUGIN_RUNTIME_DIR in the Quadlet unit' do
+          is_expected.to contain_file(
+            '/var/lib/bastionvault/.config/containers/systemd/bastionvault.container',
+          ).with_content(%r{Environment=BV_PLUGIN_RUNTIME_DIR=/var/lib/bvault/data/plugin-run})
         end
       end
 
@@ -278,6 +289,12 @@ describe 'bastionvault' do
         it 'omits the plugin_runtime_dir key so the server uses its OS-temp default' do
           is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
             .without_content(%r{plugin_runtime_dir})
+        end
+
+        it 'omits the BV_PLUGIN_RUNTIME_DIR env var from the Quadlet unit' do
+          is_expected.to contain_file(
+            '/var/lib/bastionvault/.config/containers/systemd/bastionvault.container',
+          ).without_content(%r{BV_PLUGIN_RUNTIME_DIR})
         end
 
         it 'creates the non-root user with linger guard' do
