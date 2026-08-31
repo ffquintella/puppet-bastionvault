@@ -23,6 +23,8 @@ Full design lives in [docs/specs.md](docs/specs.md).
 - Drops a cgroups v2 slice override with `MemoryMax`, `CPUQuota`,
   `TasksMax`, and `IOWeight`.
 - Brings the service to **running, but uninitialized**.
+- Ships two client-only classes: `bastionvault::client` (EL, RPM + wrapper)
+  and `bastionvault::windows` (Windows, CLI + GUI via Chocolatey).
 
 ## What this module deliberately does NOT do
 
@@ -296,9 +298,10 @@ The module decodes the base64, writes the PEM files under
 
 ## Client-only install (`bastionvault::client`)
 
-For hosts that only need the `bvault` CLI to talk to a remote BastionVault
-server — no container, no service, none of the server plumbing. The class
-does three things:
+For EL hosts that only need the `bvault` CLI to talk to a remote BastionVault
+server — no container, no service, none of the server plumbing. For Windows
+workstations, see [`bastionvault::windows`](#windows-workstations-bastionvaultwindows)
+instead. The class does three things:
 
 1. **Installs the CLI** — the upstream `bastionvault` RPM, which ships
    `/usr/bin/bvault` plus a manpage and bash/zsh/fish completions.
@@ -428,6 +431,94 @@ bvault secrets list      # any CLI command now targets the configured server
 | `manage_wrapper`   | `true`                   | Manage the `/usr/local/bin` wrapper.                               |
 | `wrapper_path`     | `'/usr/local/bin/bvault'`| Wrapper location.                                                  |
 | `binary_path`      | `'/usr/bin/bvault'`      | Packaged binary the wrapper execs.                                 |
+
+## Windows workstations (`bastionvault::windows`)
+
+The Windows counterpart to `bastionvault::client`. It registers a Chocolatey
+source pointing at the NuGet repository that carries the BastionVault
+packages, then installs the `bvault` CLI and the desktop GUI from it.
+
+Scope is deliberately install-only — no wrapper script, no CA trust anchor,
+no server. Client configuration on Windows is left to the packages and to
+the operator.
+
+### Quick start
+
+```puppet
+# profile::bvault_workstation
+class { 'bastionvault::windows':
+  repo_url      => 'https://nexus.example.com/repository/choco-hosted/',
+  repo_priority => 1,
+}
+```
+
+That produces:
+
+- a Chocolatey source named `bastionvault` at the given feed,
+- `bastionvault-client` installed from it,
+- `bastionvault-gui` installed from it, ordered after the client.
+
+`repo_priority => 1` makes the internal feed authoritative; the default `0`
+means "no priority", which lets the public community feed compete on equal
+footing for the same package IDs.
+
+### Chocolatey itself
+
+Chocolatey is assumed to be present already, managed by the site's baseline
+profile. Set `manage_chocolatey => true` to have this class pull in
+puppetlabs/chocolatey's bootstrap instead — but note the stock bootstrap
+reaches out to the public community feed, which is usually the opposite of
+what a site running an internal NuGet mirror wants.
+
+### Authenticated feeds
+
+```puppet
+class { 'bastionvault::windows':
+  repo_url      => 'https://packages.example.com/nuget/windows/',
+  repo_user     => 'svc_puppet',
+  repo_password => Sensitive(lookup('choco_feed_password')),
+  client_ensure => '0.12.3',
+  gui_ensure    => '0.12.3',
+}
+```
+
+Both packages are installed with `--source bastionvault` (the *source name*,
+not the raw URL) so the credentials stored against the registered source
+apply. Override with `package_source` if you need a different feed for the
+package install than the one being registered.
+
+Chocolatey cannot read a configured source password back, so once
+`repo_password` is set the `chocolateysource` resource reports a change on
+every Puppet run. This is a limitation of the upstream type, not of this
+module.
+
+### A UNC package share works too
+
+`repo_url` accepts a UNC or local path as well as an HTTP(S) feed:
+
+```puppet
+class { 'bastionvault::windows':
+  repo_url => '\\\\fileserver\\choco',
+}
+```
+
+### Parameters
+
+| Parameter             | Default                   | Purpose                                                            |
+|-----------------------|---------------------------|--------------------------------------------------------------------|
+| `repo_url`            | *(required)*              | NuGet/Chocolatey feed URL, or UNC/local package share.             |
+| `manage_repo`         | `true`                    | Register `repo_url` as a Chocolatey source.                        |
+| `repo_name`           | `'bastionvault'`          | Name the source is registered under; also the default `--source`.  |
+| `repo_priority`       | `0`                       | Source priority; lower wins, `0` means unprioritized.              |
+| `repo_user`           | `undef`                   | Username for an authenticated feed.                                |
+| `repo_password`       | `undef`                   | Password for an authenticated feed, wrapped in `Sensitive`.        |
+| `manage_chocolatey`   | `false`                   | Include the `chocolatey` class to bootstrap Chocolatey first.      |
+| `client_package_name` | `'bastionvault-client'`   | Chocolatey package ID of the `bvault` CLI.                         |
+| `gui_package_name`    | `'bastionvault-gui'`      | Chocolatey package ID of the desktop GUI.                          |
+| `client_ensure`       | `'installed'`             | `installed`, `latest`, or a pinned version for the CLI.            |
+| `gui_ensure`          | `'installed'`             | `installed`, `latest`, or a pinned version for the GUI.            |
+| `package_source`      | `undef`                   | Override the `--source` value (defaults to `repo_name`, or `repo_url` when `manage_repo` is false). |
+| `install_options`     | `[]`                      | Extra flags for `choco install`, e.g. `['--ignore-checksums']`.    |
 
 ## Development
 

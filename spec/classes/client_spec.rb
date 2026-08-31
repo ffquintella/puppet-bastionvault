@@ -94,7 +94,9 @@ if catalog_harness == :regent
   end
 else
   describe 'bastionvault::client' do
-    on_supported_os.each do |os, os_facts|
+    # metadata.json also lists Windows (for bastionvault::windows); this
+    # class is EL-only, so keep the matrix off the Windows entries.
+    on_supported_os.reject { |os, _facts| os.start_with?('windows') }.each do |os, os_facts|
       context "on #{os}" do
         let(:facts) { os_facts }
 

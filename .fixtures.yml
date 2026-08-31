@@ -13,5 +13,6 @@ fixtures:
       ref:  '8.1.0'
     baseapp:
       repo: 'ffquintella/baseapp'
+    chocolatey: 'puppetlabs/chocolatey'
   symlinks:
     bastionvault: "#{source_dir}"
