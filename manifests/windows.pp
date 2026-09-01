@@ -35,7 +35,11 @@
 # @param manage_chocolatey Include the `chocolatey` class to bootstrap
 #   Chocolatey before the source and packages are managed.
 # @param client_package_name Chocolatey package ID of the `bvault` CLI.
-# @param gui_package_name    Chocolatey package ID of the desktop GUI.
+#   Defaults to the ID BastionVault's own packaging publishes,
+#   `bastionvault-cli` (see `installers/cli/nupkg/`); override only for a
+#   feed that renames it.
+# @param gui_package_name    Chocolatey package ID of the desktop GUI,
+#   `bastionvault-gui` upstream (`gui/src-tauri/installers/windows/nupkg/`).
 # @param client_ensure Package ensure for the CLI (`installed`, `latest`,
 #   or a pinned version such as `'0.12.3'`).
 # @param gui_ensure    Package ensure for the GUI, same accepted values.
@@ -74,7 +78,7 @@ class bastionvault::windows (
 
   Boolean                                       $manage_chocolatey   = false,
 
-  String[1]                                     $client_package_name = 'bastionvault-client',
+  String[1]                                     $client_package_name = 'bastionvault-cli',
   String[1]                                     $gui_package_name    = 'bastionvault-gui',
   String[1]                                     $client_ensure       = 'installed',
   String[1]                                     $gui_ensure          = 'installed',

@@ -32,7 +32,7 @@ if catalog_harness == :regent
       let(:params) { { repo_url: FEED } }
 
       it { is_expected.to compile }
-      it { is_expected.to contain_package('bastionvault-client') }
+      it { is_expected.to contain_package('bastionvault-cli') }
       it { is_expected.to contain_package('bastionvault-gui') }
     end
 
@@ -67,7 +67,7 @@ else
           }
 
           it 'installs the CLI from the managed source, by source name' do
-            is_expected.to contain_package('bastionvault-client')
+            is_expected.to contain_package('bastionvault-cli')
               .with_ensure('installed')
               .with_provider('chocolatey')
               .with_source('bastionvault')
@@ -79,7 +79,7 @@ else
               .with_ensure('installed')
               .with_provider('chocolatey')
               .with_source('bastionvault')
-              .that_requires('Package[bastionvault-client]')
+              .that_requires('Package[bastionvault-cli]')
           end
 
           it 'does not bootstrap Chocolatey by default' do
@@ -100,7 +100,7 @@ else
 
           it { is_expected.to contain_package('bvault-cli').with_ensure('0.12.3') }
           it { is_expected.to contain_package('bvault-desktop').with_ensure('0.12.2') }
-          it { is_expected.not_to contain_package('bastionvault-client') }
+          it { is_expected.not_to contain_package('bastionvault-cli') }
         end
 
         context 'with an authenticated feed' do
@@ -133,7 +133,7 @@ else
           it { is_expected.not_to contain_chocolateysource('bastionvault') }
 
           it 'falls back to the raw feed URL as the package source' do
-            is_expected.to contain_package('bastionvault-client').with_source(FEED)
+            is_expected.to contain_package('bastionvault-cli').with_source(FEED)
           end
         end
 
@@ -141,7 +141,7 @@ else
           let(:params) { { repo_url: FEED, package_source: 'https://other.example.test/nuget/' } }
 
           it {
-            is_expected.to contain_package('bastionvault-client')
+            is_expected.to contain_package('bastionvault-cli')
               .with_source('https://other.example.test/nuget/')
           }
         end
@@ -161,7 +161,7 @@ else
           let(:params) { { repo_url: FEED, install_options: ['--ignore-checksums'] } }
 
           it {
-            is_expected.to contain_package('bastionvault-client')
+            is_expected.to contain_package('bastionvault-cli')
               .with_install_options(['--ignore-checksums'])
           }
 

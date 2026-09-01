@@ -455,7 +455,7 @@ class { 'bastionvault::windows':
 That produces:
 
 - a Chocolatey source named `bastionvault` at the given feed,
-- `bastionvault-client` installed from it,
+- `bastionvault-cli` installed from it,
 - `bastionvault-gui` installed from it, ordered after the client.
 
 `repo_priority => 1` makes the internal feed authoritative; the default `0`
@@ -513,7 +513,7 @@ class { 'bastionvault::windows':
 | `repo_user`           | `undef`                   | Username for an authenticated feed.                                |
 | `repo_password`       | `undef`                   | Password for an authenticated feed, wrapped in `Sensitive`.        |
 | `manage_chocolatey`   | `false`                   | Include the `chocolatey` class to bootstrap Chocolatey first.      |
-| `client_package_name` | `'bastionvault-client'`   | Chocolatey package ID of the `bvault` CLI.                         |
+| `client_package_name` | `'bastionvault-cli'`      | Chocolatey package ID of the `bvault` CLI.                         |
 | `gui_package_name`    | `'bastionvault-gui'`      | Chocolatey package ID of the desktop GUI.                          |
 | `client_ensure`       | `'installed'`             | `installed`, `latest`, or a pinned version for the CLI.            |
 | `gui_ensure`          | `'installed'`             | `installed`, `latest`, or a pinned version for the GUI.            |
