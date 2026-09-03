@@ -34,6 +34,14 @@ if catalog_harness == :regent
       it { is_expected.to compile }
       it { is_expected.to contain_package('bastionvault-cli') }
       it { is_expected.to contain_package('bastionvault-gui') }
+      it { is_expected.to contain_package('yubikey-manager') }
+    end
+
+    context 'with manage_ykman disabled' do
+      let(:params) { { repo_url: FEED, manage_ykman: false } }
+
+      it { is_expected.to compile }
+      it { is_expected.not_to contain_package('yubikey-manager') }
     end
 
     context 'with pinned versions' do
@@ -84,6 +92,52 @@ else
 
           it 'does not bootstrap Chocolatey by default' do
             is_expected.not_to contain_class('chocolatey')
+          end
+
+          it 'installs ykman ahead of the CLI, from Chocolatey default sources' do
+            is_expected.to contain_package('yubikey-manager')
+              .with_ensure('installed')
+              .with_provider('chocolatey')
+              .with_source(nil)
+
+            is_expected.to contain_package('bastionvault-cli')
+              .that_requires('Package[yubikey-manager]')
+          end
+        end
+
+        context 'with manage_ykman disabled' do
+          let(:params) { { repo_url: FEED, manage_ykman: false } }
+
+          it { is_expected.not_to contain_package('yubikey-manager') }
+        end
+
+        context 'with a custom ykman package name, ensure, and source' do
+          let(:params) do
+            {
+              repo_url:             FEED,
+              ykman_package_name:   'ykman-cli',
+              ykman_ensure:         '5.2.1',
+              ykman_package_source: 'https://other.example.test/nuget/',
+            }
+          end
+
+          it {
+            is_expected.to contain_package('ykman-cli')
+              .with_ensure('5.2.1')
+              .with_provider('chocolatey')
+              .with_source('https://other.example.test/nuget/')
+          }
+          it { is_expected.not_to contain_package('yubikey-manager') }
+        end
+
+        context 'when another module already declares the ykman package' do
+          let(:pre_condition) { "package { 'yubikey-manager': ensure => latest, provider => chocolatey }" }
+          let(:params) { { repo_url: FEED } }
+
+          it { is_expected.to compile.with_all_deps }
+
+          it 'does not redeclare it, leaving the pre-existing resource in charge' do
+            is_expected.to contain_package('yubikey-manager').with_ensure('latest')
           end
         end
 

@@ -455,12 +455,41 @@ class { 'bastionvault::windows':
 That produces:
 
 - a Chocolatey source named `bastionvault` at the given feed,
-- `bastionvault-cli` installed from it,
+- Yubico's `ykman` (YubiKey Manager CLI) installed from Chocolatey's
+  configured sources, ahead of the client,
+- `bastionvault-cli` installed from the feed,
 - `bastionvault-gui` installed from it, ordered after the client.
 
 `repo_priority => 1` makes the internal feed authoritative; the default `0`
 means "no priority", which lets the public community feed compete on equal
 footing for the same package IDs.
+
+### `ykman` (YubiKey Manager)
+
+BastionVault's Windows client and GUI use hardware-token-backed auth/unseal
+flows that depend on Yubico's `ykman` CLI being present. This class installs
+it from the `yubikey-manager` Chocolatey package by default, ahead of the
+`bvault` CLI.
+
+Because `ykman` is a generic dependency that a site profile, another
+BastionVault-adjacent module, or the base image itself might *also* need to
+install, it's declared with stdlib's `ensure_packages()` rather than a plain
+`package` resource. If a `Package['yubikey-manager']` (or whatever
+`ykman_package_name` is set to) is already declared elsewhere in the
+catalog, this class detects it and skips its own declaration instead of
+failing to compile with a duplicate-resource error — the existing
+declaration wins, and the CLI install is still ordered after it.
+
+Set `manage_ykman => false` if you'd rather manage `ykman` entirely outside
+this module (e.g. baked into the image, or pinned centrally by a site
+profile) — the class will neither declare it nor add the ordering edge.
+
+```puppet
+class { 'bastionvault::windows':
+  repo_url => 'https://nexus.example.com/repository/choco-hosted/',
+  manage_ykman => false, # already handled by profile::yubikey
+}
+```
 
 ### Chocolatey itself
 
@@ -519,6 +548,10 @@ class { 'bastionvault::windows':
 | `gui_ensure`          | `'installed'`             | `installed`, `latest`, or a pinned version for the GUI.            |
 | `package_source`      | `undef`                   | Override the `--source` value (defaults to `repo_name`, or `repo_url` when `manage_repo` is false). |
 | `install_options`     | `[]`                      | Extra flags for `choco install`, e.g. `['--ignore-checksums']`.    |
+| `manage_ykman`        | `true`                    | Install `ykman` via `ensure_packages()`, ordered ahead of the CLI. Safe to combine with other modules managing the same package. |
+| `ykman_package_name`  | `'yubikey-manager'`       | Chocolatey package ID of YubiKey Manager.                          |
+| `ykman_ensure`        | `'installed'`             | `installed`, `latest`, or a pinned version for `ykman`.            |
+| `ykman_package_source`| `undef`                   | `--source` for `ykman` only; defaults to Chocolatey's configured sources rather than `package_source`. |
 
 ## Development
 

@@ -50,6 +50,23 @@
 # @param install_options Extra flags handed to `choco install` for both
 #   packages, e.g. `['--ignore-checksums']` or
 #   `[{'--installargs' => 'quiet'}]`.
+# @param manage_ykman Install Yubico's `ykman` (YubiKey Manager CLI),
+#   required for BastionVault's hardware-token-backed unseal/auth flows on
+#   Windows. Declared with `ensure_packages()` rather than a plain `package`
+#   resource, so a site profile or another module that already manages the
+#   same package title does not collide with this class in a "duplicate
+#   resource" catalog error — whichever declares it first wins, and this
+#   class simply orders the CLI install after it either way.
+# @param ykman_package_name Chocolatey package ID of YubiKey Manager.
+#   Defaults to the upstream community-feed ID, `yubikey-manager`; override
+#   if an internal mirror renames it.
+# @param ykman_ensure Package ensure for `ykman` (`installed`, `latest`, or
+#   a pinned version).
+# @param ykman_package_source Value passed to `choco install --source` for
+#   `ykman` only. Defaults to `undef` (Chocolatey's configured sources)
+#   rather than `$package_source`, since `ykman` is ordinarily pulled from
+#   the public community feed rather than the internal feed that carries
+#   the BastionVault packages themselves.
 #
 # @example Internal Nexus feed, both packages tracking the newest build
 #   class { 'bastionvault::windows':
@@ -85,6 +102,11 @@ class bastionvault::windows (
 
   Optional[String[1]]                           $package_source      = undef,
   Array[Variant[String[1], Hash[String[1], String]]] $install_options = [],
+
+  Boolean                                       $manage_ykman        = true,
+  String[1]                                     $ykman_package_name  = 'yubikey-manager',
+  String[1]                                     $ykman_ensure        = 'installed',
+  Optional[String[1]]                           $ykman_package_source = undef,
 ) {
   # OS gate — mirrors the RedHat-only gate the EL classes carry, from the
   # other side. Chocolatey exists nowhere else.
@@ -128,11 +150,27 @@ class bastionvault::windows (
     }
   }
 
+  if $manage_ykman {
+    # ensure_packages(), not a plain `package` resource: $ykman_package_name
+    # is a generic third-party dependency other modules or the site profile
+    # may already manage, so this must no-op rather than collide with an
+    # existing declaration of the same title.
+    ensure_packages([$ykman_package_name], {
+        'ensure'   => $ykman_ensure,
+        'provider' => 'chocolatey',
+        'source'   => $ykman_package_source,
+    })
+  }
+
   package { $client_package_name:
     ensure          => $client_ensure,
     provider        => chocolatey,
     source          => $_package_source,
     install_options => $install_options,
+  }
+
+  if $manage_ykman {
+    Package[$ykman_package_name] -> Package[$client_package_name]
   }
 
   # The GUI is a front end for the CLI, so order it behind the client to
