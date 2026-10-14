@@ -111,6 +111,12 @@
 #   live on the data volume.) Set to undef to omit the key and fall back to the
 #   server's OS-temp-dir default. On deployments whose data volume is mounted
 #   `noexec`, override this with a path backed by a writable, exec-allowed mount.
+# @param mcp_enabled When true, renders an `mcp { ... }` block in config.hcl
+#   enabling the server's MCP (Model Context Protocol) endpoint. Default false
+#   leaves the block out entirely, so the server keeps its built-in default.
+# @param mcp_canonical_url Public canonical URL of the MCP endpoint (e.g.
+#   `https://bv.example.org:4200/v2/mcp`), written as `canonical_url` inside the
+#   `mcp` block. Only rendered when `mcp_enabled` is true; omitted when undef.
 # @param hsm_backend HSM auto-unseal backend. `undef` (default) leaves the
 #   server on Shamir unseal (operator enters shares). `mock` uses the software
 #   mock HSM (dev/homolog only — no hardware protection; the server refuses it
@@ -283,6 +289,9 @@ class bastionvault (
   Stdlib::Absolutepath                         $pid_file        = '/var/run/bvault.pid',
 
   Optional[Stdlib::Absolutepath]               $plugin_runtime_dir = '/var/lib/bvault/data/plugin-run',
+
+  Boolean                                      $mcp_enabled        = false,
+  Optional[Stdlib::HTTPSUrl]                   $mcp_canonical_url  = undef,
 
   # ── HSM auto-unseal (BastionVault v0.24.0+; both backends baked into the stock image) ──
   Optional[Enum['mock', 'yubihsm2']]           $hsm_backend             = undef,

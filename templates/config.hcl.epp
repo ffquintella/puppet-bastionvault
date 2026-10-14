@@ -24,6 +24,8 @@
       Integer[0]                    $log_rotate_keep,
       Stdlib::Absolutepath          $pid_file,
       Optional[Stdlib::Absolutepath] $plugin_runtime_dir,
+      Boolean                       $mcp_enabled,
+      String                        $mcp_canonical_url,
       Optional[Enum['mock','yubihsm2']] $hsm_backend,
       Optional[String[1]]           $hsm_connector,
       String[1]                     $hsm_password_env,
@@ -110,6 +112,16 @@ pid_file  = "<%= $pid_file %>"
 # and are unaffected.) The Quadlet unit also exports this path as
 # BV_PLUGIN_RUNTIME_DIR, which takes precedence over this key at runtime.
 plugin_runtime_dir = "<%= $plugin_runtime_dir %>"
+<%- } -%>
+<%- if $mcp_enabled { -%>
+
+# MCP (Model Context Protocol) endpoint.
+mcp {
+  enabled       = true
+<%-   if $mcp_canonical_url != '' { -%>
+  canonical_url = "<%= $mcp_canonical_url %>"
+<%-   } -%>
+}
 <%- } -%>
 <%- if $hsm_backend { -%>
 

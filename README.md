@@ -166,6 +166,28 @@ the pinned material is missing in HA + mock.
 cluster epoch and enrolled-node count. It needs a login token, so run
 `bvault login ...` first.
 
+## MCP endpoint
+
+Set `mcp_enabled` to render an `mcp` block in `config.hcl`. It is off by
+default, and the block is then omitted entirely.
+
+```yaml
+bastionvault::mcp_enabled: true
+bastionvault::mcp_canonical_url: "https://bv.example.org:4200/v2/mcp"
+```
+
+renders:
+
+```hcl
+mcp {
+  enabled       = true
+  canonical_url = "https://bv.example.org:4200/v2/mcp"
+}
+```
+
+`mcp_canonical_url` is optional (`Stdlib::HTTPSUrl`); when undef the
+`canonical_url` line is left out.
+
 ## TLS material
 
 The module accepts cert/key material for **three** independent TLS endpoints:

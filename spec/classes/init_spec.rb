@@ -116,6 +116,31 @@ if catalog_harness == :regent
     # Puppet undef (`:undef` is passed through as a literal), so the default
     # value still renders here.
 
+    # MCP block. Regex literals avoid `{`/`}` (regent's matcher rejects them).
+    context 'with defaults (MCP disabled)' do
+      # without_content is a no-op under regent: prove the mcp block is absent
+      # by asserting plugin_runtime_dir is the last line of the file.
+      it 'renders no mcp block' do
+        is_expected.to contain_file(config)
+          .with_content(%r{plugin_runtime_dir = "/var/lib/bvault/data/plugin-run"\n\z})
+      end
+    end
+
+    context 'with mcp_enabled and mcp_canonical_url' do
+      let(:params) do
+        { mcp_enabled: true, mcp_canonical_url: 'https://bv1.example.test:4200/v2/mcp' }
+      end
+
+      it 'renders the mcp block with enabled = true' do
+        is_expected.to contain_file(config).with_content(%r{\nmcp \S\n  enabled       = true\n})
+      end
+
+      it 'renders the canonical_url' do
+        is_expected.to contain_file(config)
+          .with_content(%r{canonical_url = "https://bv1\.example\.test:4200/v2/mcp"})
+      end
+    end
+
     context 'with network_mode=pasta (legacy user-mode networking)' do
       let(:params) { { network_mode: 'pasta' } }
 
@@ -282,6 +307,35 @@ describe 'bastionvault' do
           is_expected.to contain_file(
             '/var/lib/bastionvault/.config/containers/systemd/bastionvault.container',
           ).with_content(%r{Environment=BV_PLUGIN_RUNTIME_DIR=/var/lib/bvault/data/plugin-run})
+        end
+      end
+
+      context 'with defaults (MCP disabled)' do
+        it 'renders no mcp block' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .without_content(%r{^mcp \{})
+            .without_content(%r{canonical_url})
+        end
+      end
+
+      context 'with mcp_enabled and mcp_canonical_url' do
+        let(:params) do
+          { mcp_enabled: true, mcp_canonical_url: 'https://bv1.example.test:4200/v2/mcp' }
+        end
+
+        it 'renders the mcp block' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{^mcp \{\n  enabled       = true\n  canonical_url = "https://bv1\.example\.test:4200/v2/mcp"\n\}})
+        end
+      end
+
+      context 'with mcp_enabled and no mcp_canonical_url' do
+        let(:params) { { mcp_enabled: true } }
+
+        it 'renders the mcp block without canonical_url' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{^mcp \{\n  enabled       = true\n\}})
+            .without_content(%r{canonical_url})
         end
       end
 

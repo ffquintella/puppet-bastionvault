@@ -71,6 +71,9 @@ class bastionvault::config {
         'log_rotate_keep'                      => $bastionvault::log_rotate_keep,
         'pid_file'                             => $bastionvault::pid_file,
         'plugin_runtime_dir'                   => $bastionvault::plugin_runtime_dir,
+        'mcp_enabled'                          => $bastionvault::mcp_enabled,
+        # undef → '' so regent doesn't render the literal string `undef`.
+        'mcp_canonical_url'                    => $bastionvault::mcp_canonical_url ? { undef => '', default => $bastionvault::mcp_canonical_url },
         'hsm_backend'                          => $bastionvault::hsm_backend,
         'hsm_connector'                        => $bastionvault::hsm_connector,
         'hsm_password_env'                     => $bastionvault::hsm_password_env,
