@@ -117,6 +117,17 @@
 # @param mcp_canonical_url Public canonical URL of the MCP endpoint (e.g.
 #   `https://bv.example.org:4200/v2/mcp`), written as `canonical_url` inside the
 #   `mcp` block. Only rendered when `mcp_enabled` is true; omitted when undef.
+# @param mcp_brokered_sessions_enabled When true (and `mcp_enabled` is true),
+#   renders `brokered_sessions { enabled = true }` inside the `mcp` block, the
+#   server-side switch that lets MCP agents open sessions to resources (e.g.
+#   `bv_resource_ssh_exec`). The server also requires the runtime switch
+#   `sys/mcp/config.brokered_sessions_enabled` (off by default, set via the
+#   API) and a per-binding `connect_allowed` grant; neither is managed here.
+# @param mcp_brokered_sessions_protocols Protocols agents may open sessions
+#   with, any of `ssh`, `web`, `rdp`. An empty list refuses every protocol.
+# @param mcp_brokered_sessions_allowed_target_cidrs Destination allow-list.
+#   undef keeps the server default (RFC 1918 + `fc00::/7`); a list replaces
+#   that default and an empty list allows no destination.
 # @param hsm_backend HSM auto-unseal backend. `undef` (default) leaves the
 #   server on Shamir unseal (operator enters shares). `mock` uses the software
 #   mock HSM (dev/homolog only — no hardware protection; the server refuses it
@@ -292,6 +303,10 @@ class bastionvault (
 
   Boolean                                      $mcp_enabled        = false,
   Optional[Stdlib::HTTPSUrl]                   $mcp_canonical_url  = undef,
+
+  Boolean                                      $mcp_brokered_sessions_enabled              = false,
+  Array[Enum['ssh', 'web', 'rdp']]             $mcp_brokered_sessions_protocols            = ['ssh'],
+  Optional[Array[String[1]]]                   $mcp_brokered_sessions_allowed_target_cidrs = undef,
 
   # ── HSM auto-unseal (BastionVault v0.24.0+; both backends baked into the stock image) ──
   Optional[Enum['mock', 'yubihsm2']]           $hsm_backend             = undef,

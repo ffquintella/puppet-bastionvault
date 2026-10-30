@@ -26,6 +26,9 @@
       Optional[Stdlib::Absolutepath] $plugin_runtime_dir,
       Boolean                       $mcp_enabled,
       String                        $mcp_canonical_url,
+      Boolean                       $mcp_brokered_sessions_enabled,
+      String[1]                     $mcp_brokered_sessions_protocols_hcl,
+      String                        $mcp_brokered_sessions_cidrs_hcl,
       Optional[Enum['mock','yubihsm2']] $hsm_backend,
       Optional[String[1]]           $hsm_connector,
       String[1]                     $hsm_password_env,
@@ -120,6 +123,18 @@ mcp {
   enabled       = true
 <%-   if $mcp_canonical_url != '' { -%>
   canonical_url = "<%= $mcp_canonical_url %>"
+<%-   } -%>
+<%-   if $mcp_brokered_sessions_enabled { -%>
+
+  # Agent sessions to resources. Also needs the runtime switch
+  # sys/mcp/config.brokered_sessions_enabled and a connect_allowed binding.
+  brokered_sessions {
+    enabled   = true
+    protocols = <%= $mcp_brokered_sessions_protocols_hcl %>
+<%-     if $mcp_brokered_sessions_cidrs_hcl != '' { -%>
+    allowed_target_cidrs = <%= $mcp_brokered_sessions_cidrs_hcl %>
+<%-     } -%>
+  }
 <%-   } -%>
 }
 <%- } -%>

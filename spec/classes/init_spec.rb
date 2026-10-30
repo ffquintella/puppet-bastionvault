@@ -141,6 +141,29 @@ if catalog_harness == :regent
       end
     end
 
+    context 'with mcp brokered sessions enabled' do
+      let(:params) do
+        {
+          mcp_enabled: true,
+          mcp_brokered_sessions_enabled: true,
+          mcp_brokered_sessions_allowed_target_cidrs: ['10.0.0.0/8', '172.16.0.0/12'],
+        }
+      end
+
+      it 'renders brokered_sessions with enabled = true' do
+        is_expected.to contain_file(config).with_content(%r{  brokered_sessions \S\n    enabled   = true\n})
+      end
+
+      it 'renders the default ssh protocol' do
+        is_expected.to contain_file(config).with_content(%r{    protocols = \["ssh"\]\n})
+      end
+
+      it 'renders the destination allow-list' do
+        is_expected.to contain_file(config)
+          .with_content(%r{    allowed_target_cidrs = \["10\.0\.0\.0/8", "172\.16\.0\.0/12"\]\n})
+      end
+    end
+
     context 'with network_mode=pasta (legacy user-mode networking)' do
       let(:params) { { network_mode: 'pasta' } }
 
@@ -326,6 +349,25 @@ describe 'bastionvault' do
         it 'renders the mcp block' do
           is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
             .with_content(%r{^mcp \{\n  enabled       = true\n  canonical_url = "https://bv1\.example\.test:4200/v2/mcp"\n\}})
+        end
+      end
+
+      context 'with mcp brokered sessions enabled (default allow-list)' do
+        let(:params) { { mcp_enabled: true, mcp_brokered_sessions_enabled: true } }
+
+        it 'renders brokered_sessions with ssh and no allowed_target_cidrs' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{  brokered_sessions \{\n    enabled   = true\n    protocols = \["ssh"\]\n  \}\n\}})
+            .without_content(%r{allowed_target_cidrs})
+        end
+      end
+
+      context 'with mcp enabled and brokered sessions off (default)' do
+        let(:params) { { mcp_enabled: true } }
+
+        it 'renders no brokered_sessions block' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .without_content(%r{brokered_sessions})
         end
       end
 

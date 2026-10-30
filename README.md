@@ -188,6 +188,34 @@ mcp {
 `mcp_canonical_url` is optional (`Stdlib::HTTPSUrl`); when undef the
 `canonical_url` line is left out.
 
+### Brokered sessions
+
+`mcp_brokered_sessions_enabled` (default false, needs `mcp_enabled`) renders
+the server-side switch that lets MCP agents open sessions to resources, e.g.
+`bv_resource_ssh_exec`:
+
+```yaml
+bastionvault::mcp_brokered_sessions_enabled: true
+bastionvault::mcp_brokered_sessions_protocols: ["ssh"]        # default; ssh, web, rdp
+bastionvault::mcp_brokered_sessions_allowed_target_cidrs: ["10.0.0.0/8"]  # optional
+```
+
+renders, inside the `mcp` block:
+
+```hcl
+  brokered_sessions {
+    enabled   = true
+    protocols = ["ssh"]
+    allowed_target_cidrs = ["10.0.0.0/8"]
+  }
+```
+
+Leave `allowed_target_cidrs` undef to keep the server default (RFC 1918 +
+`fc00::/7`). Requires BastionVault server v0.44.37 or later. The server also
+needs the runtime switch `sys/mcp/config` `brokered_sessions_enabled = true`
+(sudo, off by default) and a `connect_allowed` grant on the agent's binding;
+this module manages neither.
+
 ## TLS material
 
 The module accepts cert/key material for **three** independent TLS endpoints:

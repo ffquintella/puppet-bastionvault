@@ -35,6 +35,25 @@ class bastionvault::config {
     mode   => '0770',
   }
 
+  # HCL list bodies for mcp.brokered_sessions, built here because EPP lambdas
+  # render undef under regent. '' means "omit the key" for the CIDR list.
+  $_bs_protocols = $bastionvault::mcp_brokered_sessions_protocols
+  $_bs_cidrs     = $bastionvault::mcp_brokered_sessions_allowed_target_cidrs
+  if empty($_bs_protocols) {
+    $_bs_protocols_hcl = '[]'
+  } else {
+    $_bs_protocols_joined = join($_bs_protocols, '", "')
+    $_bs_protocols_hcl = "[\"${_bs_protocols_joined}\"]"
+  }
+  if $_bs_cidrs == undef {
+    $_bs_cidrs_hcl = ''
+  } elsif empty($_bs_cidrs) {
+    $_bs_cidrs_hcl = '[]'
+  } else {
+    $_bs_cidrs_joined = join($_bs_cidrs, '", "')
+    $_bs_cidrs_hcl = "[\"${_bs_cidrs_joined}\"]"
+  }
+
   file { "${config_dir}/config.hcl":
     ensure    => file,
     owner     => $user,
@@ -74,6 +93,9 @@ class bastionvault::config {
         'mcp_enabled'                          => $bastionvault::mcp_enabled,
         # undef → '' so regent doesn't render the literal string `undef`.
         'mcp_canonical_url'                    => $bastionvault::mcp_canonical_url ? { undef => '', default => $bastionvault::mcp_canonical_url },
+        'mcp_brokered_sessions_enabled'        => $bastionvault::mcp_brokered_sessions_enabled,
+        'mcp_brokered_sessions_protocols_hcl'  => $_bs_protocols_hcl,
+        'mcp_brokered_sessions_cidrs_hcl'      => $_bs_cidrs_hcl,
         'hsm_backend'                          => $bastionvault::hsm_backend,
         'hsm_connector'                        => $bastionvault::hsm_connector,
         'hsm_password_env'                     => $bastionvault::hsm_password_env,
