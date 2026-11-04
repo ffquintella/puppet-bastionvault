@@ -62,10 +62,11 @@ Volume=<%= $cli_token_dir %>:/etc/bvault/cli-tokens:Z
 # Host CA trust bundle (auto-detected). Mounted read-only at both the EL
 # canonical path and the Debian-style path so the in-container TLS stack
 # trusts the same roots as the host (corporate CAs from update-ca-trust, etc).
-# `:z` (lowercase) shares the SELinux label since the bundle is read by other
-# host processes; we must not relabel it exclusively to this container.
-Volume=<%= $host_ca_bundle_effective %>:/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem:ro,z
-Volume=<%= $host_ca_bundle_effective %>:/etc/ssl/certs/ca-certificates.crt:ro,z
+# No `:z`/`:Z`: the bundle is a root-owned system file, and a rootless podman
+# user cannot relabel it (lsetxattr EPERM under enforcing SELinux). Its
+# native cert_t label is already readable by container domains.
+Volume=<%= $host_ca_bundle_effective %>:/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem:ro
+Volume=<%= $host_ca_bundle_effective %>:/etc/ssl/certs/ca-certificates.crt:ro
 <%- } -%>
 Environment=RUST_LOG=<%= $log_level %>
 <%- if $plugin_runtime_dir { -%>
