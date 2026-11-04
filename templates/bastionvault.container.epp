@@ -13,6 +13,7 @@
       Stdlib::Absolutepath $log_dir,
       Stdlib::Absolutepath $backup_dir,
       Stdlib::Absolutepath $cli_token_dir,
+      Stdlib::Absolutepath $hsm_out_dir,
       Boolean              $mount_host_ca_bundle,
       Stdlib::Absolutepath $host_ca_bundle_effective,
       String[1]            $log_level,
@@ -58,6 +59,10 @@ Volume=<%= $backup_dir %>:/backups:Z
 # persists its issued token here (writable from inside the container) and
 # subsequent `bvault <cmd>` invocations read it back.
 Volume=<%= $cli_token_dir %>:/etc/bvault/cli-tokens:Z
+# Exchange directory for local CLI output (`bvault operator hsm provision --out
+# /hsm-out/<file>.json`): files written here appear on the host in
+# <%= $hsm_out_dir %> and survive container restarts.
+Volume=<%= $hsm_out_dir %>:/hsm-out:Z
 <%- if $mount_host_ca_bundle { -%>
 # Host CA trust bundle (auto-detected). Mounted read-only at both the EL
 # canonical path and the Debian-style path so the in-container TLS stack

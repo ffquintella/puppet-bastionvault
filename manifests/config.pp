@@ -21,6 +21,7 @@ class bastionvault::config {
   $config_dir     = $bastionvault::config_dir
   $tls_dir        = $bastionvault::tls_dir
   $cli_token_dir  = $bastionvault::cli_token_dir
+  $hsm_out_dir    = $bastionvault::hsm_out_dir
 
   # Per-user token-helper directory. The CLI inside the container writes
   # ~/.vault-token equivalents here (path injected via $BVAULT_TOKEN_FILE
@@ -33,6 +34,17 @@ class bastionvault::config {
     owner  => $user,
     group  => $group,
     mode   => '0770',
+  }
+
+  # Exchange directory for `bvault operator hsm provision --out /hsm-out/...`:
+  # bind-mounted at /hsm-out so the attestation bundle lands on the host.
+  # Owner is the service user (= container UID via UserNS keep-id); 0750 lets
+  # members of the bastionvault group read the bundle.
+  file { $hsm_out_dir:
+    ensure => directory,
+    owner  => $user,
+    group  => $group,
+    mode   => '0750',
   }
 
   # HCL list bodies for mcp.brokered_sessions, built here because EPP lambdas

@@ -65,6 +65,7 @@ class bastionvault::service {
           'log_dir'                  => $bastionvault::log_dir,
           'backup_dir'               => $bastionvault::backup_dir,
           'cli_token_dir'            => $bastionvault::cli_token_dir,
+          'hsm_out_dir'              => $bastionvault::hsm_out_dir,
           'mount_host_ca_bundle'     => $bastionvault::mount_host_ca_bundle,
           'host_ca_bundle_effective' => $bastionvault::host_ca_bundle_effective,
           'log_level'                => $bastionvault::log_level,

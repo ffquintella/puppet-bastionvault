@@ -1,6 +1,7 @@
 <%- | String[1]    $user,
       Stdlib::Port $service_port,
       String       $passthrough_env,
+      Stdlib::Absolutepath $hsm_out_dir,
 | -%>
 #!/bin/sh
 # Managed by Puppet — bastionvault module.
@@ -36,6 +37,13 @@
 #     in-container listener binds: $listen_port under host networking,
 #     $container_port under pasta/slirp4netns. The exec always targets
 #     the container's loopback on that port.
+#   * Output files: the container filesystem is ephemeral, so a `--out PATH`
+#     given to a local command is lost on restart. The host directory
+#     <%= $hsm_out_dir %> (bastionvault::hsm_out_dir, owner bastionvault,
+#     0750) is bind-mounted at /hsm-out; use e.g.
+#         bvault operator hsm provision --connector http://127.0.0.1:12345 \
+#                --out /hsm-out/hsm-a.json
+#     and the bundle appears on the host as <%= $hsm_out_dir %>/hsm-a.json.
 TTY_FLAG=
 if [ -t 0 ] && [ -t 1 ]; then TTY_FLAG=-t; fi
 

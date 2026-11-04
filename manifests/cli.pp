@@ -24,6 +24,7 @@ class bastionvault::cli {
         'user'            => $user,
         'service_port'    => $service_port,
         'passthrough_env' => $passthrough_env,
+        'hsm_out_dir'     => $bastionvault::hsm_out_dir,
     }),
   }
 

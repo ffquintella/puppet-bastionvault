@@ -192,6 +192,18 @@ if catalog_harness == :regent
       end
     end
 
+    context 'hsm exchange directory (regent)' do
+      it 'creates the host directory 0750 owned by the service user' do
+        is_expected.to contain_file('/var/lib/bastionvault/hsm-out').with(
+          'ensure' => 'directory', 'owner' => 'bastionvault', 'group' => 'bastionvault', 'mode' => '0750',
+        )
+      end
+
+      it 'documents /hsm-out in the wrapper header' do
+        is_expected.to contain_file(wrapper).with_content(%r{--out /hsm-out/hsm-a\.json})
+      end
+    end
+
     context 'with cli_passthrough_env (regent)' do
       let(:params) { { cli_passthrough_env: ['HSM_ADMIN_PW_A', 'HSM_FACTORY_PW'] } }
 
@@ -276,6 +288,19 @@ describe 'bastionvault' do
   on_supported_os.reject { |os, _facts| os.start_with?('windows') }.each do |os, os_facts|
     context "on #{os}" do
       let(:facts) { os_facts.merge(bastionvault_user_uid: 1234) }
+
+      context 'hsm exchange directory' do
+        it 'creates the host directory 0750 owned by the service user' do
+          is_expected.to contain_file('/var/lib/bastionvault/hsm-out').with(
+            'ensure' => 'directory', 'owner' => 'bastionvault', 'group' => 'bastionvault', 'mode' => '0750',
+          )
+        end
+
+        it 'bind-mounts it at /hsm-out in the Quadlet' do
+          is_expected.to contain_file('/var/lib/bastionvault/.config/containers/systemd/bastionvault.container')
+            .with_content(%r{^Volume=/var/lib/bastionvault/hsm-out:/hsm-out:Z$})
+        end
+      end
 
       context 'with cli_passthrough_env' do
         let(:params) { { cli_passthrough_env: ['HSM_ADMIN_PW_A', 'HSM_FACTORY_PW'] } }

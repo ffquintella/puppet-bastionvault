@@ -35,6 +35,10 @@
 #   NAME` + `sudo --preserve-env=NAME`), so values never appear in argv, logs
 #   or Puppet facts. VAULT_TOKEN/BVAULT_TOKEN are always forwarded this way.
 #   Default: none.
+# @param hsm_out_dir Host directory bind-mounted into the container at
+#   /hsm-out (owner `user`, mode 0750). `bvault operator hsm provision --out
+#   /hsm-out/hsm-a.json` writes the attestation bundle (JSON, no secrets)
+#   straight to this host directory, so it survives container restarts.
 # @param tls_cert_source Optional Puppet `source` URI for the TLS cert file.
 # @param tls_cert_content Optional literal PEM content for the TLS cert file.
 # @param tls_cert_base64 Optional base64-encoded PEM cert. Decoded on the
@@ -247,6 +251,7 @@ class bastionvault (
   # the container UID/GID so the in-container CLI can write to it.
   Stdlib::Absolutepath                         $cli_token_dir       = '/srv/application-config/bastionvault/cli-tokens',
 
+  Stdlib::Absolutepath                         $hsm_out_dir         = '/var/lib/bastionvault/hsm-out',
   Array[Pattern[/\A[A-Za-z_][A-Za-z0-9_]*\z/]]  $cli_passthrough_env = [],
 
   String[1]                                    $user            = 'bastionvault',
