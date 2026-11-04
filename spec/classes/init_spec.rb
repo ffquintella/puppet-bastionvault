@@ -192,6 +192,15 @@ if catalog_harness == :regent
       end
     end
 
+    context 'with cli_passthrough_env (regent)' do
+      let(:params) { { cli_passthrough_env: ['HSM_ADMIN_PW_A', 'HSM_FACTORY_PW'] } }
+
+      it 'lists the names (never values) in the wrapper' do
+        is_expected.to contain_file(wrapper)
+          .with_content(%r{for _v in VAULT_TOKEN BVAULT_TOKEN HSM_ADMIN_PW_A HSM_FACTORY_PW; do})
+      end
+    end
+
     context 'with no HSM (default)' do
       it 'renders no hsm block' do
         is_expected.to contain_file(config).without_content(%r{hsm "})
@@ -267,6 +276,23 @@ describe 'bastionvault' do
   on_supported_os.reject { |os, _facts| os.start_with?('windows') }.each do |os, os_facts|
     context "on #{os}" do
       let(:facts) { os_facts.merge(bastionvault_user_uid: 1234) }
+
+      context 'with cli_passthrough_env' do
+        let(:params) { { cli_passthrough_env: ['HSM_ADMIN_PW_A', 'HSM_FACTORY_PW'] } }
+
+        it 'lists the names (never values) in the wrapper' do
+          is_expected.to contain_file('/usr/local/bin/bvault')
+            .with_content(%r{for _v in VAULT_TOKEN BVAULT_TOKEN HSM_ADMIN_PW_A HSM_FACTORY_PW; do})
+            .with_content(%r{--preserve-env=})
+        end
+      end
+
+      context 'with cli_passthrough_env left at its default' do
+        it 'forwards only the token variables' do
+          is_expected.to contain_file('/usr/local/bin/bvault')
+            .with_content(%r{for _v in VAULT_TOKEN BVAULT_TOKEN ; do})
+        end
+      end
 
       context 'with defaults (single-node)' do
         it { is_expected.to compile.with_all_deps }

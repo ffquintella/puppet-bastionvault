@@ -28,6 +28,13 @@
 # @param tls_dir         Host path for TLS material.
 # @param log_dir         Host path bind-mounted into the container at /var/log/bvault.
 # @param backup_dir      Host path bind-mounted into the container at /backups.
+# @param cli_passthrough_env Names of environment variables the `bvault` wrapper
+#   forwards into the container when the caller has exported them, e.g.
+#   `['HSM_ADMIN_PW_A', 'HSM_ADMIN_PW_B', 'HSM_FACTORY_PW']` for
+#   `--admin-password env:HSM_ADMIN_PW_A`. Forwarded BY NAME (`podman exec --env
+#   NAME` + `sudo --preserve-env=NAME`), so values never appear in argv, logs
+#   or Puppet facts. VAULT_TOKEN/BVAULT_TOKEN are always forwarded this way.
+#   Default: none.
 # @param tls_cert_source Optional Puppet `source` URI for the TLS cert file.
 # @param tls_cert_content Optional literal PEM content for the TLS cert file.
 # @param tls_cert_base64 Optional base64-encoded PEM cert. Decoded on the
@@ -239,6 +246,8 @@ class bastionvault (
   # across podman exec invocations. The directory is created owned by
   # the container UID/GID so the in-container CLI can write to it.
   Stdlib::Absolutepath                         $cli_token_dir       = '/srv/application-config/bastionvault/cli-tokens',
+
+  Array[Pattern[/\A[A-Za-z_][A-Za-z0-9_]*\z/]]  $cli_passthrough_env = [],
 
   String[1]                                    $user            = 'bastionvault',
   String[1]                                    $group           = 'bastionvault',

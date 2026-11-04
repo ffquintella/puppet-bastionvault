@@ -1,5 +1,6 @@
 <%- | String[1]    $user,
       Stdlib::Port $service_port,
+      String       $passthrough_env,
 | -%>
 #!/bin/sh
 # Managed by Puppet — bastionvault module.
@@ -152,17 +153,35 @@ fi
 caller=${SUDO_USER:-${LOGNAME:-${USER:-anon}}}
 token_file=/etc/bvault/cli-tokens/${caller}.token
 
-# Pass through token-related env vars so an operator who sets
-# VAULT_TOKEN / BVAULT_TOKEN on the host gets it honored inside the
-# container. Always set BVAULT_TOKEN_FILE so the on-disk helper works
-# even without env wiring.
+# Always set BVAULT_TOKEN_FILE so the on-disk token helper works even without
+# env wiring (it is a path, not a secret, so it stays as NAME=value).
 podman_env="--env BVAULT_TOKEN_FILE=${token_file}"
-[ -n "${VAULT_TOKEN:-}" ]       && podman_env="$podman_env --env VAULT_TOKEN=$VAULT_TOKEN"
-[ -n "${BVAULT_TOKEN:-}" ]      && podman_env="$podman_env --env BVAULT_TOKEN=$BVAULT_TOKEN"
 [ -n "${BVAULT_TLS_DEBUG:-}" ]  && podman_env="$podman_env --env BVAULT_TLS_DEBUG=$BVAULT_TLS_DEBUG"
+
+# Secrets travel BY NAME ONLY: `podman exec --env NAME` copies NAME from
+# podman's own environment, and `sudo --preserve-env=NAME` carries it across
+# the user switch, so the value never shows up in argv (`ps`) or logs.
+# Forwarded when the caller has exported them:
+#   * VAULT_TOKEN, BVAULT_TOKEN  an operator-supplied token is honored in the
+#                                container (the token helper file still works).
+#   * bastionvault::cli_passthrough_env (Puppet-managed list, default none),
+#     e.g. HSM_ADMIN_PW_A / HSM_FACTORY_PW for `--admin-password env:NAME`,
+#     `--factory-password env:NAME`, `--admin hsm-a=env:NAME` on
+#     `operator hsm provision|bootstrap|node add|repair`.
+# printenv only reports whether the variable is set (value goes to /dev/null).
+preserve=
+for _v in VAULT_TOKEN BVAULT_TOKEN <%= $passthrough_env %>; do
+  if printenv "$_v" >/dev/null 2>&1; then
+    podman_env="$podman_env --env $_v"
+    preserve="${preserve:+$preserve,}$_v"
+  fi
+done
+unset _v
+sudo_env=
+[ -n "$preserve" ] && sudo_env="--preserve-env=$preserve"
 
 # Move to a directory the target user can read, otherwise sudo inherits the
 # caller's cwd (e.g. /root) and the rootless user fails to chdir into it.
 cd / || exit 1
-# shellcheck disable=SC2086  # $extra and $podman_env are intentionally word-split
-exec /usr/bin/sudo -n -u <%= $user %> /usr/bin/podman exec -i $TTY_FLAG $podman_env bastionvault bvault "$@" $extra
+# shellcheck disable=SC2086  # $extra, $podman_env and $sudo_env are intentionally word-split
+exec /usr/bin/sudo -n $sudo_env -u <%= $user %> /usr/bin/podman exec -i $TTY_FLAG $podman_env bastionvault bvault "$@" $extra

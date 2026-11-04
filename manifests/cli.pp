@@ -11,14 +11,19 @@ class bastionvault::cli {
   $group        = $bastionvault::group
   $service_port = $bastionvault::service_port
 
+  # Env var names the wrapper forwards into the container by name (never by
+  # value). Joined here because EPP lambdas/join render poorly under regent.
+  $passthrough_env = join($bastionvault::cli_passthrough_env, ' ')
+
   file { '/usr/local/bin/bvault':
     ensure  => file,
     owner   => 'root',
     group   => 'root',
     mode    => '0755',
     content => epp('bastionvault/bvault-wrapper.sh.epp', {
-        'user'         => $user,
-        'service_port' => $service_port,
+        'user'            => $user,
+        'service_port'    => $service_port,
+        'passthrough_env' => $passthrough_env,
     }),
   }
 

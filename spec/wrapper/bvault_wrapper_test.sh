@@ -11,6 +11,7 @@ trap 'rm -rf "$work"' EXIT
 
 PASSTHROUGH=${PASSTHROUGH:-}
 
+# shellcheck disable=SC2016  # the EPP markers are literal text for sed
 render() {
   # drop the typed-parameter header, substitute the EPP values, point the
   # absolute sudo path at the stub
@@ -72,6 +73,31 @@ for cmd in "--version" "operator" "operator hsm" "rustion master"; do
   run "$work/bvault" $cmd
   t "'$cmd': no flags" noflags
 done
+
+# 4. passthrough env: --env NAME without value, --preserve-env, no secret in argv
+PASSTHROUGH='HSM_ADMIN_PW_A HSM_ADMIN_PW_B'
+render
+out=$(HSM_ADMIN_PW_A='s3cret-value' env -u HSM_ADMIN_PW_B "$work/bvault" operator hsm bootstrap 2>&1)
+c4() {
+  printf '%s\n' "$out" | grep -qx -- '--env' &&
+  printf '%s\n' "$out" | grep -qx 'HSM_ADMIN_PW_A' &&
+  has '^--preserve-env=.*HSM_ADMIN_PW_A' && ! has 's3cret-value'
+}
+t 'passthrough: --env NAME + --preserve-env, value never in argv' c4
+# 5. unset variable: no --env for it
+c5() { ! has 'HSM_ADMIN_PW_B'; }
+t 'passthrough: unset variable is not forwarded' c5
+
+# 6. token is forwarded by name only
+render
+out=$(VAULT_TOKEN='tok-secret-123' "$work/bvault" operator hsm status 2>&1)
+c6() { printf '%s\n' "$out" | grep -qx 'VAULT_TOKEN' && ! has 'tok-secret-123' && has '^--preserve-env=.*VAULT_TOKEN'; }
+t 'VAULT_TOKEN forwarded by name, value not in argv' c6
+
+# 7. empty passthrough list renders a valid script
+PASSTHROUGH=''
+run "$work/bvault" operator hsm status
+t 'empty passthrough list: still works' flags3
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
