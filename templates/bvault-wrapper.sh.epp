@@ -63,9 +63,35 @@ case "${1:-}" in
     inject_addr=0; inject_ca=0; inject_sni=0 ;;
 esac
 
+# LOCAL commands never talk to the server, so their clap structs do NOT
+# accept --address/--ca-cert/--tls-server-name ("unexpected argument
+# '--address' found"). Injection is OFF for every command path listed here,
+# including any deeper subcommand/leaf below it. To add a local command,
+# append its path to LOCAL_COMMANDS: words joined by ':', entries separated by
+# spaces. Everything not listed keeps the default (inject), because the
+# default HTTP-using commands (operator init, operator hsm status|members|
+# bootstrap|node|repair|recover, login, ...) need the flags.
+#   server                 runs the server process itself
+#   hsm-gateway            local HSM gateway process
+#   operator:hsm:provision talks to the yubihsm-connector, not the server
+#   operator:cloud-target  local cloud-target tooling
+LOCAL_COMMANDS="server hsm-gateway operator:hsm:provision operator:cloud-target"
+_lc_path=""
+_lc_n=0
+for _arg in "$@"; do
+  case "$_arg" in -*) continue ;; esac
+  _lc_path="${_lc_path:+$_lc_path:}$_arg"
+  case " $LOCAL_COMMANDS " in
+    *" $_lc_path "*) inject_addr=0; inject_ca=0; inject_sni=0; break ;;
+  esac
+  _lc_n=$((_lc_n + 1))
+  [ "$_lc_n" -ge 3 ] && break
+done
+unset _lc_path _lc_n _arg
+
 # bvault has nested command groups (operator/cluster/auth/policy/secrets/
 # exchange/rustion at the top, plus `rustion master`, `rustion target`,
-# `operator cloud-target` one level down) whose group structs do NOT
+# `operator cloud-target`, `operator hsm` one level down) whose group structs do NOT
 # accept the HTTP flags — only their leaf subcommands do. So `bvault
 # operator` alone, or `bvault rustion master` alone, fails with
 # "unexpected argument '--address' found" when we append the flags.
@@ -92,7 +118,7 @@ for _arg in "$@"; do
           esac ;;
         operator)
           case "$_arg" in
-            cloud-target) _walk_depth=2 ;;
+            cloud-target|hsm) _walk_depth=2 ;;
             *)            _walk_skip=2; break ;;
           esac ;;
         *) _walk_skip=2; break ;;
