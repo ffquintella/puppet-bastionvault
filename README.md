@@ -132,6 +132,53 @@ reachable from the container. The password is written to a 0600 `hsm.env`
 EnvironmentFile and referenced from `config.hcl` as
 `env:BASTIONVAULT_HSM_PASSWORD` — never rendered into `config.hcl` in the clear.
 
+### Provisioning a YubiHSM 2 with the `bvault` wrapper
+
+`bvault operator hsm provision` is a **local** command: it talks to the
+`yubihsm-connector`, not to the server, so the wrapper deliberately does not add
+`--address`/`--ca-cert`/`--tls-server-name` to it (nor to `server`,
+`hsm-gateway` or `operator cloud-target`; the list is `LOCAL_COMMANDS` in
+`templates/bvault-wrapper.sh.epp`). Every other command keeps the injection.
+
+Output files go through the exchange directory `hsm_out_dir` (default
+`/var/lib/bastionvault/hsm-out`, owner `bastionvault`, mode `0750`), which is
+bind-mounted in the container at `/hsm-out`. Anything written there is on the
+host and survives container restarts:
+
+```sh
+bvault operator hsm provision \
+  --connector http://127.0.0.1:12345 \
+  --out /hsm-out/hsm-a.json
+# the attestation bundle (JSON, no secrets) is now
+# /var/lib/bastionvault/hsm-out/hsm-a.json on the host
+```
+
+With no password argument, the command asks for the passwords on the TTY (the
+wrapper allocates one when stdin/stdout are terminals), so nothing secret lands
+in shell history or `ps`.
+
+For non-interactive use (`--admin-password env:NAME`, `--factory-password
+env:NAME`, `--admin hsm-a=env:NAME` on `operator hsm provision|bootstrap|node
+add|repair`), list the variable names in Hiera and export them in the caller's
+shell:
+
+```yaml
+bastionvault::cli_passthrough_env:
+  - HSM_ADMIN_PW_A
+  - HSM_ADMIN_PW_B
+  - HSM_FACTORY_PW
+```
+
+```sh
+export HSM_ADMIN_PW_A    # set it without echoing, e.g. read -rs HSM_ADMIN_PW_A
+bvault operator hsm bootstrap --admin hsm-a=env:HSM_ADMIN_PW_A ...
+```
+
+Variables are forwarded **by name** (`podman exec --env NAME` with
+`sudo --preserve-env=NAME`) and only when exported, so values never appear in
+argv, logs or Puppet facts. `VAULT_TOKEN`/`BVAULT_TOKEN` are forwarded the same
+way.
+
 ### HA cluster with the mock
 
 Each node runs its own mock "device", and the wrapped KEK is bound to the
