@@ -21,11 +21,15 @@ class bastionvault::ca_trust {
     command     => '/usr/bin/update-ca-trust extract',
     refreshonly => true,
     require     => Package['ca-certificates'],
-    # Bounce the container so any in-memory trust cache reloads from the
-    # freshly-extracted bundle. The wrapper service in bastionvault::service
-    # proxies through to the rootless user unit.
-    notify      => Service['bastionvault'],
   }
+
+  # Bounce the container so any in-memory trust cache reloads from the
+  # freshly-extracted bundle. The wrapper service in bastionvault::service
+  # proxies through to the rootless user unit. A collector is used because
+  # Service['bastionvault'] is only declared once the rootless user's UID is
+  # known (second run); a direct `notify => Service[...]` fails catalog
+  # compilation on the first run.
+  Exec['bastionvault-update-ca-trust'] ~> Service <| title == 'bastionvault' |>
 
   $bastionvault::extra_ca_certs.each |$_name, $_spec| {
     # Sanitize the anchor filename; only alnum/_/- allowed.
