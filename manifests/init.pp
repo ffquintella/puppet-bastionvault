@@ -177,6 +177,12 @@
 #   self-provision on first boot.
 # @param hsm_mock_state_base64 Base64-encoded form of $hsm_mock_state_content
 #   (convenient via Hiera/eyaml). Ignored if $hsm_mock_state_content is set.
+# @param hsm_gateway_config_content Literal HCL of `hsm-gateway.hcl`. REQUIRED
+#   (this or $hsm_gateway_config_source) when $hsm_backend is `yubihsm2` (not needed for `mock`). Written to
+#   `${config_dir}/hsm-gateway.hcl` on the host and bind-mounted read-only at
+#   /etc/bvault/hsm-gateway.hcl, so it is edited on the host, not in the container.
+# @param hsm_gateway_config_source Puppet `source` for `hsm-gateway.hcl`; used when
+#   $hsm_gateway_config_content is unset.
 # @param hsm_connector YubiHSM connector URL (e.g. `http://127.0.0.1:12345`).
 #   REQUIRED for `yubihsm2`. Under host networking a connector on the host's
 #   loopback is reachable from the container as-is.
@@ -343,6 +349,10 @@ class bastionvault (
   Optional[String[1]]                          $hsm_connector           = undef,
   Optional[Variant[Sensitive[String[1]], String[1]]] $hsm_password      = undef,
 
+  # hsm-gateway config (required when $hsm_backend is yubihsm2)
+  Optional[String[1]]                          $hsm_gateway_config_content = undef,
+  Optional[String[1]]                          $hsm_gateway_config_source  = undef,
+
   Boolean                                      $manage_selinux  = true,
   Boolean                                      $manage_firewall = false,
 
@@ -427,6 +437,13 @@ class bastionvault (
     if $hsm_password == undef {
       fail('bastionvault: $hsm_backend is "yubihsm2" but $hsm_password is unset.')
     }
+  }
+
+  # hsm-gateway.hcl must exist (and is mounted into the container) whenever the
+  # yubihsm2 HSM backend is in use (the mock needs no gateway).
+  $hsm_gateway_config = "${config_dir}/hsm-gateway.hcl"
+  if $hsm_backend == 'yubihsm2' and $hsm_gateway_config_content == undef and $hsm_gateway_config_source == undef {
+    fail("bastionvault: \$hsm_backend is \"${hsm_backend}\" but neither \$hsm_gateway_config_content nor \$hsm_gateway_config_source is set — hsm-gateway.hcl is required for the yubihsm2 backend.")
   }
 
   if $hsm_backend == 'mock' {

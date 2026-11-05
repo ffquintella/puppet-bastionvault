@@ -247,7 +247,7 @@ if catalog_harness == :regent
 
     context 'with the yubihsm2 HSM backend' do
       let(:params) do
-        { hsm_backend: 'yubihsm2', hsm_connector: 'http://127.0.0.1:12345', hsm_password: 'sekret' }
+        { hsm_backend: 'yubihsm2', hsm_gateway_config_content: 'gateway {}', hsm_connector: 'http://127.0.0.1:12345', hsm_password: 'sekret' }
       end
 
       it 'renders an hsm "yubihsm2" block with connector and env-ref password' do
@@ -707,7 +707,7 @@ describe 'bastionvault' do
 
       context 'with the yubihsm2 HSM backend' do
         let(:params) do
-          { hsm_backend: 'yubihsm2', hsm_connector: 'http://127.0.0.1:12345', hsm_password: sensitive('sekret') }
+          { hsm_backend: 'yubihsm2', hsm_gateway_config_content: 'gateway {}', hsm_connector: 'http://127.0.0.1:12345', hsm_password: sensitive('sekret') }
         end
 
         it { is_expected.to compile.with_all_deps }
@@ -726,14 +726,58 @@ describe 'bastionvault' do
         end
       end
 
+      context 'with yubihsm2 but no hsm-gateway config' do
+        let(:params) { { hsm_backend: 'yubihsm2', hsm_connector: 'http://127.0.0.1:12345', hsm_password: 'sekret' } }
+
+        it { is_expected.to compile.and_raise_error(%r{hsm-gateway\.hcl is required}) }
+      end
+
+      context 'with yubihsm2 and hsm-gateway content' do
+        let(:params) do
+          { hsm_backend: 'yubihsm2', hsm_connector: 'http://127.0.0.1:12345', hsm_password: 'sekret',
+            hsm_gateway_config_content: "gateway {}\n" }
+        end
+
+        it 'manages hsm-gateway.hcl on the host' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/hsm-gateway.hcl')
+            .with_ensure('file').with_mode('0640').with_content("gateway {}\n")
+        end
+
+        it 'bind-mounts it read-only in the Quadlet' do
+          is_expected.to contain_file(quadlet)
+            .with_content(%r{^Volume=/srv/application-config/bastionvault/hsm-gateway\.hcl:/etc/bvault/hsm-gateway\.hcl:ro,z$})
+        end
+      end
+
+      context 'with yubihsm2 and hsm-gateway source' do
+        let(:params) do
+          { hsm_backend: 'yubihsm2', hsm_connector: 'http://127.0.0.1:12345', hsm_password: 'sekret',
+            hsm_gateway_config_source: 'puppet:///modules/x/hsm-gateway.hcl' }
+        end
+
+        it { is_expected.to contain_file('/srv/application-config/bastionvault/hsm-gateway.hcl').with_source('puppet:///modules/x/hsm-gateway.hcl') }
+      end
+
+      context 'with the mock backend (no gateway needed)' do
+        let(:params) { { hsm_backend: 'mock' } }
+
+        it { is_expected.not_to contain_file('/srv/application-config/bastionvault/hsm-gateway.hcl') }
+        it { is_expected.to contain_file(quadlet).without_content(%r{hsm-gateway}) }
+      end
+
+      context 'with no HSM backend' do
+        it { is_expected.not_to contain_file('/srv/application-config/bastionvault/hsm-gateway.hcl') }
+        it { is_expected.to contain_file(quadlet).without_content(%r{hsm-gateway}) }
+      end
+
       context 'with yubihsm2 but no connector' do
-        let(:params) { { hsm_backend: 'yubihsm2', hsm_password: sensitive('x') } }
+        let(:params) { { hsm_backend: 'yubihsm2', hsm_gateway_config_content: 'gateway {}', hsm_password: sensitive('x') } }
 
         it { is_expected.to compile.and_raise_error(%r{\$hsm_connector is unset}) }
       end
 
       context 'with yubihsm2 but no password' do
-        let(:params) { { hsm_backend: 'yubihsm2', hsm_connector: 'http://127.0.0.1:12345' } }
+        let(:params) { { hsm_backend: 'yubihsm2', hsm_gateway_config_content: 'gateway {}', hsm_connector: 'http://127.0.0.1:12345' } }
 
         it { is_expected.to compile.and_raise_error(%r{\$hsm_password is unset}) }
       end

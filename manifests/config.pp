@@ -137,6 +137,30 @@ class bastionvault::config {
     }
   }
 
+  # hsm-gateway.hcl: managed on the host and bind-mounted into the container
+  # (see the Quadlet), so it is edited here / in Hiera, never inside the container.
+  if $bastionvault::hsm_backend == 'yubihsm2' {
+    if $bastionvault::hsm_gateway_config_content != undef {
+      file { $bastionvault::hsm_gateway_config:
+        ensure    => file,
+        owner     => $user,
+        group     => $group,
+        mode      => '0640',
+        content   => $bastionvault::hsm_gateway_config_content,
+        show_diff => false,
+      }
+    } else {
+      file { $bastionvault::hsm_gateway_config:
+        ensure    => file,
+        owner     => $user,
+        group     => $group,
+        mode      => '0640',
+        source    => $bastionvault::hsm_gateway_config_source,
+        show_diff => false,
+      }
+    }
+  }
+
   # yubihsm2: password injected as an EnvironmentFile so it never lands in the
   # world-inspectable Quadlet unit or in config.hcl. config.hcl references it as
   # env:BASTIONVAULT_HSM_PASSWORD; the Quadlet loads this file at container start.
