@@ -461,6 +461,14 @@ describe 'bastionvault' do
           )
         end
 
+        it 'labels only the HSM exchange dir container_file_t, mode unchanged' do
+          is_expected.to contain_selinux__fcontext('bastionvault-hsm-out').with(
+            pathspec: '/var/lib/bastionvault/hsm-out(/.*)?',
+            seltype:  'container_file_t',
+          )
+          is_expected.to contain_file('/var/lib/bastionvault/hsm-out').with_mode('0750')
+        end
+
         it 'writes the cgroups slice drop-in' do
           is_expected.to contain_file('/etc/systemd/system/user-1234.slice.d/50-bastionvault.conf')
             .with_content(%r{MemoryMax=2G})
