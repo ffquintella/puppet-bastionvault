@@ -94,7 +94,7 @@ if catalog_harness == :regent
 
       it 'bind-mounts the backup directory at /backups' do
         is_expected.to contain_file(quadlet)
-          .with_content(%r{Volume=/srv/application-data/bastionvault/backups:/backups:Z})
+          .with_content(%r{Volume=/srv/application-data/bastionvault/backups:/backups:z})
       end
 
       it 'renders the single-node hiqlite storage block' do
@@ -298,7 +298,7 @@ describe 'bastionvault' do
 
         it 'bind-mounts it at /hsm-out in the Quadlet' do
           is_expected.to contain_file('/var/lib/bastionvault/.config/containers/systemd/bastionvault.container')
-            .with_content(%r{^Volume=/var/lib/bastionvault/hsm-out:/hsm-out:Z$})
+            .with_content(%r{^Volume=/var/lib/bastionvault/hsm-out:/hsm-out:z$})
         end
       end
 
@@ -357,7 +357,7 @@ describe 'bastionvault' do
         it 'bind-mounts the backup directory at /backups inside the container' do
           is_expected.to contain_file(
             '/var/lib/bastionvault/.config/containers/systemd/bastionvault.container',
-          ).with_content(%r{Volume=/srv/application-data/bastionvault/backups:/backups:Z})
+          ).with_content(%r{Volume=/srv/application-data/bastionvault/backups:/backups:z})
         end
 
         it 'renders config.hcl with single-node hiqlite block' do
