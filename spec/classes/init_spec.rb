@@ -775,13 +775,28 @@ describe 'bastionvault' do
         end
 
         it 'manages hsm-gateway.hcl on the host' do
-          is_expected.to contain_file('/srv/application-config/bastionvault/hsm-gateway.hcl')
+          is_expected.to contain_file('/srv/application-config/bastionvault/hsm-gateway/hsm-gateway.hcl')
             .with_ensure('file').with_mode('0640').with_content("gateway {}\n")
         end
 
         it 'bind-mounts it read-only in the Quadlet' do
           is_expected.to contain_file(quadlet)
-            .with_content(%r{^Volume=/srv/application-config/bastionvault/hsm-gateway\.hcl:/etc/bvault/hsm-gateway\.hcl:ro,z$})
+            .with_content(%r{^Volume=/srv/application-config/bastionvault/hsm-gateway:/etc/bvault/hsm-gateway:ro,z$})
+        end
+      end
+
+      context 'with yubihsm2 and hsm-gateway content (directory + legacy cleanup)' do
+        let(:params) do
+          { hsm_backend: 'yubihsm2', hsm_connector: 'http://127.0.0.1:12345', hsm_password: 'sekret',
+            hsm_gateway_config_content: "gateway {}\n" }
+        end
+
+        it 'manages the gateway config directory 0750' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/hsm-gateway').with('ensure' => 'directory', 'mode' => '0750')
+        end
+
+        it 'removes the pre-0.19.1 single-file copy' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/hsm-gateway.hcl').with('ensure' => 'absent')
         end
       end
 
@@ -791,18 +806,18 @@ describe 'bastionvault' do
             hsm_gateway_config_source: 'puppet:///modules/x/hsm-gateway.hcl' }
         end
 
-        it { is_expected.to contain_file('/srv/application-config/bastionvault/hsm-gateway.hcl').with_source('puppet:///modules/x/hsm-gateway.hcl') }
+        it { is_expected.to contain_file('/srv/application-config/bastionvault/hsm-gateway/hsm-gateway.hcl').with_source('puppet:///modules/x/hsm-gateway.hcl') }
       end
 
       context 'with the mock backend (no gateway needed)' do
         let(:params) { { hsm_backend: 'mock' } }
 
-        it { is_expected.not_to contain_file('/srv/application-config/bastionvault/hsm-gateway.hcl') }
+        it { is_expected.not_to contain_file('/srv/application-config/bastionvault/hsm-gateway/hsm-gateway.hcl') }
         it { is_expected.to contain_file(quadlet).without_content(%r{hsm-gateway}) }
       end
 
       context 'with no HSM backend' do
-        it { is_expected.not_to contain_file('/srv/application-config/bastionvault/hsm-gateway.hcl') }
+        it { is_expected.not_to contain_file('/srv/application-config/bastionvault/hsm-gateway/hsm-gateway.hcl') }
         it { is_expected.to contain_file(quadlet).without_content(%r{hsm-gateway}) }
       end
 

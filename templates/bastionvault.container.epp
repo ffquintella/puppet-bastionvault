@@ -18,7 +18,7 @@
       Stdlib::Absolutepath $host_ca_bundle_effective,
       String[1]            $log_level,
       Optional[Stdlib::Absolutepath] $plugin_runtime_dir,
-      Optional[Stdlib::Absolutepath] $hsm_gateway_config,
+      Optional[Stdlib::Absolutepath] $hsm_gateway_config_dir,
       Optional[Stdlib::Absolutepath] $hsm_env_file,
 | -%>
 [Unit]
@@ -64,10 +64,12 @@ Volume=<%= $cli_token_dir %>:/etc/bvault/cli-tokens:z
 # /hsm-out/<file>.json`): files written here appear on the host in
 # <%= $hsm_out_dir %> and survive container restarts.
 Volume=<%= $hsm_out_dir %>:/hsm-out:z
-<%- if $hsm_gateway_config { -%>
+<%- if $hsm_gateway_config_dir { -%>
 # hsm-gateway config, managed on the host by Puppet (edit it there, not in the
 # container): required for the yubihsm2 backend.
-Volume=<%= $hsm_gateway_config %>:/etc/bvault/hsm-gateway.hcl:ro,z
+# The DIRECTORY is mounted (not the file) so Puppet's rename-based rewrites are
+# visible in the container without a restart.
+Volume=<%= $hsm_gateway_config_dir %>:/etc/bvault/hsm-gateway:ro,z
 <%- } -%>
 <%- if $mount_host_ca_bundle { -%>
 # Host CA trust bundle (auto-detected). Mounted read-only at both the EL

@@ -179,8 +179,11 @@
 #   (convenient via Hiera/eyaml). Ignored if $hsm_mock_state_content is set.
 # @param hsm_gateway_config_content Literal HCL of `hsm-gateway.hcl`. REQUIRED
 #   (this or $hsm_gateway_config_source) when $hsm_backend is `yubihsm2` (not needed for `mock`). Written to
-#   `${config_dir}/hsm-gateway.hcl` on the host and bind-mounted read-only at
-#   /etc/bvault/hsm-gateway.hcl, so it is edited on the host, not in the container.
+#   `${config_dir}/hsm-gateway/hsm-gateway.hcl` on the host; that directory is
+#   bind-mounted read-only at /etc/bvault/hsm-gateway/, so the container sees
+#   /etc/bvault/hsm-gateway/hsm-gateway.hcl and always the current content. Edit it
+#   on the host (Hiera), not in the container. Paths inside it are CONTAINER paths
+#   (e.g. `/hsm-out/hsm-a.pem`).
 # @param hsm_gateway_config_source Puppet `source` for `hsm-gateway.hcl`; used when
 #   $hsm_gateway_config_content is unset.
 # @param hsm_link_files TLS material for the HSM link (CA, gateway and node
@@ -455,7 +458,11 @@ class bastionvault (
 
   # hsm-gateway.hcl must exist (and is mounted into the container) whenever the
   # yubihsm2 HSM backend is in use (the mock needs no gateway).
-  $hsm_gateway_config = "${config_dir}/hsm-gateway.hcl"
+  # A dedicated DIRECTORY is bind-mounted (not the single file): Puppet rewrites
+  # files by rename, and a single-file bind mount keeps pointing at the replaced
+  # inode, so the container would keep reading a stale hsm-gateway.hcl.
+  $hsm_gateway_config_dir = "${config_dir}/hsm-gateway"
+  $hsm_gateway_config     = "${hsm_gateway_config_dir}/hsm-gateway.hcl"
   if $hsm_backend == 'yubihsm2' and $hsm_gateway_config_content == undef and $hsm_gateway_config_source == undef {
     fail("bastionvault: \$hsm_backend is \"${hsm_backend}\" but neither \$hsm_gateway_config_content nor \$hsm_gateway_config_source is set — hsm-gateway.hcl is required for the yubihsm2 backend.")
   }

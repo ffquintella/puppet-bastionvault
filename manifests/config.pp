@@ -178,6 +178,18 @@ class bastionvault::config {
   # hsm-gateway.hcl: managed on the host and bind-mounted into the container
   # (see the Quadlet), so it is edited here / in Hiera, never inside the container.
   if $bastionvault::hsm_backend == 'yubihsm2' {
+    file { $bastionvault::hsm_gateway_config_dir:
+      ensure => directory,
+      owner  => $user,
+      group  => $group,
+      mode   => '0750',
+    }
+
+    # Pre-0.19.1 location (single-file mount); removed so a stale copy cannot linger.
+    file { "${config_dir}/hsm-gateway.hcl":
+      ensure => absent,
+    }
+
     if $bastionvault::hsm_gateway_config_content != undef {
       file { $bastionvault::hsm_gateway_config:
         ensure    => file,
@@ -186,6 +198,7 @@ class bastionvault::config {
         mode      => '0640',
         content   => $bastionvault::hsm_gateway_config_content,
         show_diff => false,
+        require   => File[$bastionvault::hsm_gateway_config_dir],
       }
     } else {
       file { $bastionvault::hsm_gateway_config:
@@ -195,6 +208,7 @@ class bastionvault::config {
         mode      => '0640',
         source    => $bastionvault::hsm_gateway_config_source,
         show_diff => false,
+        require   => File[$bastionvault::hsm_gateway_config_dir],
       }
     }
   }

@@ -75,9 +75,9 @@ class bastionvault::service {
           'plugin_runtime_dir'       => $bastionvault::plugin_runtime_dir,
           # Only load the password EnvironmentFile for the real HSM (the mock
           # needs no secret); undef omits the EnvironmentFile= line entirely.
-          # hsm-gateway.hcl is bind-mounted only for the yubihsm2 backend.
-          'hsm_gateway_config'       => $bastionvault::hsm_backend ? {
-            'yubihsm2' => $bastionvault::hsm_gateway_config,
+          # The hsm-gateway config DIRECTORY is bind-mounted only for the yubihsm2 backend.
+          'hsm_gateway_config_dir'   => $bastionvault::hsm_backend ? {
+            'yubihsm2' => $bastionvault::hsm_gateway_config_dir,
             default    => undef,
           },
           'hsm_env_file'             => $bastionvault::hsm_backend ? {
