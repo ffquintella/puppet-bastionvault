@@ -990,6 +990,10 @@ describe 'bastionvault' do
 
         it { is_expected.to contain_exec('bastionvault-hsm-gateway-start').with_unless(%r{is-active bastionvault-hsm-gateway\.service}) }
         it { is_expected.to contain_exec('bastionvault-hsm-gateway-restart').with_refreshonly(true) }
+        it 'reloads systemd through a gateway-only exec (never the one that restarts the server)' do
+          is_expected.to contain_file('/var/lib/bastionvault/.config/containers/systemd/bastionvault-hsm-gateway.container')
+            .that_notifies('Exec[bastionvault-hsm-gateway-daemon-reload]')
+        end
         it { is_expected.to contain_file('/srv/application-config/bastionvault/hsm-gateway/hsm-gateway.hcl').that_notifies('Exec[bastionvault-hsm-gateway-restart]') }
       end
 

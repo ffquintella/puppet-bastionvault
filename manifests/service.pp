@@ -137,7 +137,16 @@ class bastionvault::service {
             'hsm_out_dir'            => $bastionvault::hsm_out_dir,
             'log_level'              => $bastionvault::log_level,
         }),
-        notify  => Exec['bastionvault-user-daemon-reload'],
+        notify  => Exec['bastionvault-hsm-gateway-daemon-reload'],
+      }
+
+      # A dedicated reload: the server's `bastionvault-user-daemon-reload` is
+      # chained to a restart of the SERVER container, which a gateway-only
+      # change must never trigger.
+      exec { 'bastionvault-hsm-gateway-daemon-reload':
+        command     => "${runas} /usr/bin/systemctl --user daemon-reload",
+        cwd         => $home,
+        refreshonly => true,
       }
 
       exec { 'bastionvault-hsm-gateway-restart':
@@ -153,14 +162,14 @@ class bastionvault::service {
         require => [
           File[$_gw_unit_path],
           File[$bastionvault::hsm_gateway_config],
-          Exec['bastionvault-user-daemon-reload'],
+          Exec['bastionvault-hsm-gateway-daemon-reload'],
           Exec['bastionvault-podman-migrate'],
         ],
       }
 
       # A unit change needs the reload first; config or certificate changes
       # restart the gateway (it reads them only at start).
-      Exec['bastionvault-user-daemon-reload'] -> Exec['bastionvault-hsm-gateway-restart']
+      Exec['bastionvault-hsm-gateway-daemon-reload'] -> Exec['bastionvault-hsm-gateway-restart']
       File[$_gw_unit_path] ~> Exec['bastionvault-hsm-gateway-restart']
       File[$bastionvault::hsm_gateway_config] ~> Exec['bastionvault-hsm-gateway-restart']
       $bastionvault::hsm_link_files.each |$_n, $_s| {
