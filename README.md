@@ -179,6 +179,55 @@ Variables are forwarded **by name** (`podman exec --env NAME` with
 argv, logs or Puppet facts. `VAULT_TOKEN`/`BVAULT_TOKEN` are forwarded the same
 way.
 
+### HSM link TLS material (CA, gateway and node certificates)
+
+The gateway link (TLS 1.3, PEM) needs one shared CA, a **gateway server**
+certificate per HSM host and a **node client** certificate per node. Nothing in
+BastionVault issues them, so the module ships a helper, `tools/bvault-hsm-pki`,
+that you run on a **trusted workstation** (never on the servers). Puppet only
+installs the finished files (`hsm_link_files`), so every node gets byte-identical
+material from one CA, and `ca.key` never leaves the workstation.
+
+Validity is enforced by the helper, not just defaulted: **CA 20 years**
+(`7300` days), **certificates 5 years** (`1830` days); lower values are refused.
+Keys are ECDSA P-256.
+
+```sh
+H=tools/bvault-hsm-pki
+$H -d hsm-link init-ca                                   # ca.key (offline!) + ca.pem
+# gateway cert: SAN = the host in the member's gateway = "https://<host>:8250" URL
+$H -d hsm-link gateway hsm-a segbo1fpr0004.fgv.br        # DNS name; an IP is auto-detected
+$H -d hsm-link gateway hsm-b segdc1fpr0005.fgv.br
+# node client cert: the name is the DNS SAN and must equal the allowed_clients entry
+$H -d hsm-link node segbo1fpr0004.fgv.br
+$H -d hsm-link node segdc1fpr0005.fgv.br
+$H -d hsm-link verify                                    # chain, EKU, SAN, key match, expiry
+```
+
+Then emit one Hiera snippet per server and encrypt it (it contains private keys):
+
+```sh
+$H -d hsm-link hiera segbo1 ca.pem hsm-a.pem hsm-a.key \
+    segbo1fpr0004.fgv.br.pem segbo1fpr0004.fgv.br.key | eyaml encrypt ...   # -> data/nodes/<node>.yaml
+```
+
+```yaml
+bastionvault::hsm_link_files:
+  'ca.pem':
+    content: |
+      -----BEGIN CERTIFICATE----- ...
+  'hsm-a.key':
+    content: ENC[...]          # eyaml; or base64:/source: instead of content:
+```
+
+Each entry takes exactly one of `content`, `base64` or `source`, and is written
+into `hsm_out_dir` (owner `bastionvault`; `*.key` is `0600`, everything else
+`0644`). `ca.key` is rejected. The paths in `hsm_gateway_config_content`
+(`tls_cert_file`, `tls_key_file`, `client_ca_file`) must point at these files.
+The helper refuses to overwrite existing files, so re-run `init-ca` only when you
+really want a new CA (it invalidates every certificate it issued). Run
+`bash spec/pki/bvault_hsm_pki_test.sh` to exercise the helper.
+
 ### HA cluster with the mock
 
 Each node runs its own mock "device", and the wrapped KEK is bound to the

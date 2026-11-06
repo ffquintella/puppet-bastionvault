@@ -219,6 +219,42 @@ if catalog_harness == :regent
       end
     end
 
+    context 'with hsm_link_files' do
+      let(:params) do
+        {
+          hsm_link_files: {
+            'ca.pem'    => { 'content' => "CA-PEM\n" },
+            'hsm-a.pem' => { 'content' => "CERT-PEM\n" },
+            'hsm-a.key' => { 'content' => "KEY-PEM\n" },
+          },
+        }
+      end
+
+      it 'installs the CA 0644 in hsm_out_dir' do
+        is_expected.to contain_file('/var/lib/bastionvault/hsm-out/ca.pem').with('mode' => '0644')
+      end
+
+      it 'installs a certificate 0644' do
+        is_expected.to contain_file('/var/lib/bastionvault/hsm-out/hsm-a.pem').with('mode' => '0644')
+      end
+
+      it 'installs private keys 0600' do
+        is_expected.to contain_file('/var/lib/bastionvault/hsm-out/hsm-a.key').with('mode' => '0600')
+      end
+    end
+
+    context 'with hsm_link_files carrying ca.key' do
+      let(:params) { { hsm_link_files: { 'ca.key' => { 'content' => 'x' } } } }
+
+      it { is_expected.to compile.and_raise_error(%r{must not contain ca\.key}) }
+    end
+
+    context 'with an hsm_link_files entry that has no source' do
+      let(:params) { { hsm_link_files: { 'ca.pem' => {} } } }
+
+      it { is_expected.to compile.and_raise_error(%r{needs exactly one of}) }
+    end
+
     context 'with the mock HSM backend (single node)' do
       let(:params) { { hsm_backend: 'mock' } }
 

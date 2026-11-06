@@ -137,6 +137,44 @@ class bastionvault::config {
     }
   }
 
+  # HSM link TLS material (CA / gateway / node certs and keys) generated off the
+  # servers by tools/bvault-hsm-pki. Installed verbatim so every node gets
+  # byte-identical files; private keys are 0600 and never shown in diffs.
+  $bastionvault::hsm_link_files.each |$_name, $_spec| {
+    $_mode = $_name ? {
+      /\.key\z/ => '0600',
+      default    => '0644',
+    }
+    $_content = $_spec['content'] ? {
+      undef   => $_spec['base64'] ? {
+        undef   => undef,
+        default => base64('decode', $_spec['base64']),
+      },
+      default => $_spec['content'],
+    }
+    if $_content != undef {
+      file { "${hsm_out_dir}/${_name}":
+        ensure    => file,
+        owner     => $user,
+        group     => $group,
+        mode      => $_mode,
+        content   => $_content,
+        show_diff => false,
+        require   => File[$hsm_out_dir],
+      }
+    } else {
+      file { "${hsm_out_dir}/${_name}":
+        ensure    => file,
+        owner     => $user,
+        group     => $group,
+        mode      => $_mode,
+        source    => $_spec['source'],
+        show_diff => false,
+        require   => File[$hsm_out_dir],
+      }
+    }
+  }
+
   # hsm-gateway.hcl: managed on the host and bind-mounted into the container
   # (see the Quadlet), so it is edited here / in Hiera, never inside the container.
   if $bastionvault::hsm_backend == 'yubihsm2' {

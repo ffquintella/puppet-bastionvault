@@ -183,6 +183,13 @@
 #   /etc/bvault/hsm-gateway.hcl, so it is edited on the host, not in the container.
 # @param hsm_gateway_config_source Puppet `source` for `hsm-gateway.hcl`; used when
 #   $hsm_gateway_config_content is unset.
+# @param hsm_link_files TLS material for the HSM link (CA, gateway and node
+#   certificates/keys) generated OFF the servers with `tools/bvault-hsm-pki` and
+#   installed verbatim into `hsm_out_dir`, so every node gets byte-identical
+#   files from one CA. Keyed by file name (`ca.pem`, `hsm-a.pem`, `hsm-a.key`,
+#   ...); each value takes exactly one of `content`, `base64` or `source`.
+#   Names ending in `.key` are written 0600, everything else 0644; owner is
+#   `user`. Never put `ca.key` here — it must stay offline (rejected).
 # @param hsm_connector YubiHSM connector URL (e.g. `http://127.0.0.1:12345`).
 #   REQUIRED for `yubihsm2`. Under host networking a connector on the host's
 #   loopback is reachable from the container as-is.
@@ -349,6 +356,13 @@ class bastionvault (
   Optional[String[1]]                          $hsm_connector           = undef,
   Optional[Variant[Sensitive[String[1]], String[1]]] $hsm_password      = undef,
 
+  # HSM link TLS files (from tools/bvault-hsm-pki), installed into $hsm_out_dir
+  Hash[Pattern[/\A[A-Za-z0-9][A-Za-z0-9._-]*\z/], Struct[{
+        Optional['content'] => String[1],
+        Optional['base64']  => String[1],
+        Optional['source']  => String[1],
+  }]]                                          $hsm_link_files             = {},
+
   # hsm-gateway config (required when $hsm_backend is yubihsm2)
   Optional[String[1]]                          $hsm_gateway_config_content = undef,
   Optional[String[1]]                          $hsm_gateway_config_source  = undef,
@@ -444,6 +458,18 @@ class bastionvault (
   $hsm_gateway_config = "${config_dir}/hsm-gateway.hcl"
   if $hsm_backend == 'yubihsm2' and $hsm_gateway_config_content == undef and $hsm_gateway_config_source == undef {
     fail("bastionvault: \$hsm_backend is \"${hsm_backend}\" but neither \$hsm_gateway_config_content nor \$hsm_gateway_config_source is set — hsm-gateway.hcl is required for the yubihsm2 backend.")
+  }
+
+  # HSM link files: exactly one source per file, and the offline CA key must
+  # never be shipped to a server.
+  $hsm_link_files.each |$_f, $_spec| {
+    if $_f == 'ca.key' {
+      fail('bastionvault: $hsm_link_files must not contain ca.key — the CA private key stays offline.')
+    }
+    $_n = ($_spec['content'] ? { undef => 0, default => 1 }) + ($_spec['base64'] ? { undef => 0, default => 1 }) + ($_spec['source'] ? { undef => 0, default => 1 })
+    if $_n != 1 {
+      fail("bastionvault: \$hsm_link_files['${_f}'] needs exactly one of content, base64 or source.")
+    }
   }
 
   if $hsm_backend == 'mock' {
