@@ -80,9 +80,12 @@ class bastionvault::service {
             'yubihsm2' => $bastionvault::hsm_gateway_config_dir,
             default    => undef,
           },
-          'hsm_env_file'             => $bastionvault::hsm_backend ? {
-            'yubihsm2' => $bastionvault::hsm_env_file,
-            default    => undef,
+          'hsm_env_file'             => $bastionvault::hsm_topology ? {
+            'pool'  => undef,
+            default => $bastionvault::hsm_backend ? {
+              'yubihsm2' => $bastionvault::hsm_env_file,
+              default    => undef,
+            },
           },
       }),
       notify  => Exec['bastionvault-user-daemon-reload'],

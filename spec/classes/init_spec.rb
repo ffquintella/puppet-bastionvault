@@ -243,6 +243,87 @@ if catalog_harness == :regent
       end
     end
 
+    context 'with the yubihsm2 pool topology' do
+      let(:params) { {
+          hsm_backend:                'yubihsm2',
+          hsm_topology:               'pool',
+          hsm_node_id:                'prd-0001',
+          hsm_gateway_config_content: "x\n",
+          hsm_attestation_roots_file: '/hsm-out/yubico-attestation.pem',
+          hsm_members:                {
+            'hsm-b' => { 'serial' => '0036470560', 'connector' => 'http://127.0.0.1:12345' },
+            'hsm-a' => { 'serial' => '0036470559', 'gateway' => 'https://segdc1fpr0005.fgv.br:8250' },
+          },
+          hsm_link:                   {
+            'ca_file'   => '/hsm-out/ca.pem',
+            'cert_file' => '/hsm-out/prd-0001.pem',
+            'key_file'  => '/hsm-out/prd-0001.key',
+          },
+        } }
+
+      it 'renders topology, credential_dir and trust file' do
+        is_expected.to contain_file(config)
+          .with_content(%r{topology\s*=\s*"pool"})
+          .with_content(%r{credential_dir\s*=\s*"/var/lib/bvault/data/hsm-credentials"})
+          .with_content(%r{attestation_roots_file\s*=\s*"/hsm-out/yubico-attestation\.pem"})
+      end
+
+      it 'renders an explicit recovery' do
+        is_expected.to contain_file(config).with_content(%r{recovery\s*=\s*"none"})
+      end
+
+      it 'renders the link identity' do
+        is_expected.to contain_file(config)
+          .with_content(%r{ca_file   = "/hsm-out/ca\.pem"})
+          .with_content(%r{cert_file = "/hsm-out/prd-0001\.pem"})
+          .with_content(%r{key_file  = "/hsm-out/prd-0001\.key"})
+      end
+
+      it 'does not render a top-level connector or password (refused in a pool)' do
+        is_expected.to contain_file(config).with_content(%r{node_id     = "prd-0001"\n  topology})
+      end
+
+    end
+
+    context 'with a pool and a gateway member but no link' do
+      let(:params) do
+        {
+          hsm_backend: 'yubihsm2', hsm_topology: 'pool', hsm_node_id: 'prd-0001', hsm_gateway_config_content: "x\n",
+          hsm_members: { 'hsm-a' => { 'serial' => '1', 'gateway' => 'https://h:8250' } },
+        }
+      end
+
+      it { is_expected.to compile.and_raise_error(%r{hsm_link}) }
+    end
+
+    context 'with a pool member that has both connector and gateway' do
+      let(:params) do
+        {
+          hsm_backend: 'yubihsm2', hsm_topology: 'pool', hsm_node_id: 'prd-0001', hsm_gateway_config_content: "x\n",
+          hsm_members: { 'hsm-a' => { 'serial' => '1', 'connector' => 'http://127.0.0.1:12345', 'gateway' => 'https://h:8250' } },
+        }
+      end
+
+      it { is_expected.to compile.and_raise_error(%r{exactly one of connector or gateway}) }
+    end
+
+    context 'with a pool and no members' do
+      let(:params) { { hsm_backend: 'yubihsm2', hsm_topology: 'pool', hsm_node_id: 'prd-0001', hsm_gateway_config_content: "x\n" } }
+
+      it { is_expected.to compile.and_raise_error(%r{one or two}) }
+    end
+
+    context 'with hsm_members in the per-node topology' do
+      let(:params) do
+        {
+          hsm_backend: 'yubihsm2', hsm_connector: 'http://127.0.0.1:12345', hsm_password: 'x', hsm_gateway_config_content: "x\n",
+          hsm_members: { 'hsm-a' => { 'serial' => '1', 'connector' => 'http://127.0.0.1:12345' } },
+        }
+      end
+
+      it { is_expected.to compile.and_raise_error(%r{only valid with}) }
+    end
+
     context 'with hsm_link_files carrying ca.key' do
       let(:params) { { hsm_link_files: { 'ca.key' => { 'content' => 'x' } } } }
 
@@ -819,6 +900,48 @@ describe 'bastionvault' do
       context 'with no HSM backend' do
         it { is_expected.not_to contain_file('/srv/application-config/bastionvault/hsm-gateway/hsm-gateway.hcl') }
         it { is_expected.to contain_file(quadlet).without_content(%r{hsm-gateway}) }
+      end
+
+      context 'with the yubihsm2 pool topology (members and credential dir)' do
+        let(:params) { {
+                  hsm_backend:                'yubihsm2',
+                  hsm_topology:               'pool',
+                  hsm_node_id:                'prd-0001',
+                  hsm_gateway_config_content: "x\n",
+                  hsm_attestation_roots_file: '/hsm-out/yubico-attestation.pem',
+                  hsm_members:                {
+                    'hsm-b' => { 'serial' => '0036470560', 'connector' => 'http://127.0.0.1:12345' },
+                    'hsm-a' => { 'serial' => '0036470559', 'gateway' => 'https://segdc1fpr0005.fgv.br:8250' },
+                  },
+                  hsm_link:                   {
+                    'ca_file'   => '/hsm-out/ca.pem',
+                    'cert_file' => '/hsm-out/prd-0001.pem',
+                    'key_file'  => '/hsm-out/prd-0001.key',
+                  },
+                } }
+
+        it 'renders the local member by connector with its serial' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{member "hsm-b" \{\n    connector = "http://127\.0\.0\.1:12345"\n    serial    = "0036470560"\n  \}})
+        end
+
+        it 'renders the remote member by gateway' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{member "hsm-a" \{\n    gateway   = "https://segdc1fpr0005\.fgv\.br:8250"\n    serial    = "0036470559"\n  \}})
+        end
+
+        it 'lists members in name order' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{member "hsm-a".*member "hsm-b"}m)
+        end
+
+        it 'creates the credential directory 0700 under the data volume' do
+          is_expected.to contain_file('/srv/application-data/bastionvault/hsm-credentials').with('ensure' => 'directory', 'mode' => '0700')
+        end
+
+        it 'does not write the password EnvironmentFile' do
+          is_expected.not_to contain_file('/srv/application-config/bastionvault/hsm.env')
+        end
       end
 
       context 'with yubihsm2 but no connector' do

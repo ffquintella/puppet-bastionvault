@@ -186,6 +186,33 @@
 #   (e.g. `/hsm-out/hsm-a.pem`).
 # @param hsm_gateway_config_source Puppet `source` for `hsm-gateway.hcl`; used when
 #   $hsm_gateway_config_content is unset.
+# @param hsm_topology `per-node` (default; one device per node, `connector` +
+#   `password`) or `pool` (BastionVault HSM pool: up to two devices shared by the
+#   whole cluster; `yubihsm2` only). Pool nodes use per-node credentials kept in
+#   $hsm_credential_dir instead of a password, so $hsm_connector, $hsm_password and
+#   the object-id overrides are not used (the server refuses them in a pool).
+#   Setup order: `provision` each device, `bootstrap` (attests both members and
+#   enrols the node), then `init` — see README. NOTE: upstream has not yet run the
+#   hardware validation (T454 phase 7) of the YubiHSM 2 pool path.
+# @param hsm_members Pool members, name => `{ serial, connector | gateway }`.
+#   One or two. The device on this host uses `connector` (e.g.
+#   `http://127.0.0.1:12345`); a device on another host uses `gateway`
+#   (`https://<host>:8250`, the peer's `bvault hsm-gateway`) and needs $hsm_link.
+#   The member name is the name given to `bootstrap --bundle <name>=…`; `serial`
+#   is the device serial from its attestation bundle.
+# @param hsm_link This node's mTLS identity for the gateways, `{ ca_file,
+#   cert_file, key_file }` as CONTAINER paths (files installed through
+#   $hsm_link_files appear under /hsm-out). Required when any member has a
+#   `gateway`. `cert_file` needs a DNS SAN equal to $hsm_node_id.
+# @param hsm_credential_dir Container path where the pool keeps this node's
+#   per-device credentials. Must live under /var/lib/bvault/data/ (the data
+#   volume); the module creates the host directory 0700.
+# @param hsm_attestation_roots_file Container path of the PEM trust file with the
+#   Yubico attestation root and intermediates (you supply it; the module never
+#   downloads it). Without it every YubiHSM 2 attestation is refused. Install it
+#   via $hsm_link_files (then it is /hsm-out/<name>).
+# @param hsm_min_wrap_copies Pool only: copies a new key needs before it is
+#   stored, 1 (default) or 2. 2 is refused with a single member.
 # @param hsm_link_files TLS material for the HSM link (CA, gateway and node
 #   certificates/keys) generated OFF the servers with `tools/bvault-hsm-pki` and
 #   installed verbatim into `hsm_out_dir`, so every node gets byte-identical
@@ -359,6 +386,22 @@ class bastionvault (
   Optional[String[1]]                          $hsm_connector           = undef,
   Optional[Variant[Sensitive[String[1]], String[1]]] $hsm_password      = undef,
 
+  # HSM pool topology (yubihsm2)
+  Enum['per-node', 'pool']                     $hsm_topology               = 'per-node',
+  Hash[Pattern[/\A[A-Za-z0-9._-]{1,64}\z/], Struct[{
+        'serial'               => String[1],
+        Optional['connector']  => String[1],
+        Optional['gateway']    => String[1],
+  }]]                                          $hsm_members                = {},
+  Optional[Struct[{
+        'ca_file'   => Stdlib::Absolutepath,
+        'cert_file' => Stdlib::Absolutepath,
+        'key_file'  => Stdlib::Absolutepath,
+  }]]                                          $hsm_link                   = undef,
+  Stdlib::Absolutepath                         $hsm_credential_dir         = '/var/lib/bvault/data/hsm-credentials',
+  Optional[Stdlib::Absolutepath]               $hsm_attestation_roots_file = undef,
+  Optional[Integer[1, 2]]                      $hsm_min_wrap_copies        = undef,
+
   # HSM link TLS files (from tools/bvault-hsm-pki), installed into $hsm_out_dir
   Hash[Pattern[/\A[A-Za-z0-9][A-Za-z0-9._-]*\z/], Struct[{
         Optional['content'] => String[1],
@@ -447,12 +490,50 @@ class bastionvault (
   # references it as `env:...` and bastionvault::config writes it to hsm.env.
   $hsm_password_env = 'BASTIONVAULT_HSM_PASSWORD'
 
-  if $hsm_backend == 'yubihsm2' {
+  if $hsm_backend == 'yubihsm2' and $hsm_topology == 'per-node' {
     if $hsm_connector == undef {
       fail('bastionvault: $hsm_backend is "yubihsm2" but $hsm_connector is unset (e.g. "http://127.0.0.1:12345").')
     }
     if $hsm_password == undef {
       fail('bastionvault: $hsm_backend is "yubihsm2" but $hsm_password is unset.')
+    }
+  }
+
+  # Pool topology: yubihsm2 only, 1-2 members, each reached by exactly one of
+  # connector/gateway, and a link identity whenever a gateway is used.
+  if $hsm_topology == 'per-node' and !empty($hsm_members) {
+    fail('bastionvault: $hsm_members is only valid with $hsm_topology = "pool".')
+  }
+  if $hsm_topology == 'pool' {
+    if $hsm_backend != 'yubihsm2' {
+      fail('bastionvault: $hsm_topology = "pool" requires $hsm_backend = "yubihsm2".')
+    }
+    if $hsm_node_id == undef {
+      fail('bastionvault: $hsm_topology = "pool" requires $hsm_node_id (the link certificate SAN must equal it).')
+    }
+    $_n_members = length($hsm_members)
+    if $_n_members < 1 or $_n_members > 2 {
+      fail("bastionvault: a pool needs one or two \$hsm_members (got ${_n_members}).")
+    }
+    if $hsm_min_wrap_copies == 2 and $_n_members < 2 {
+      fail('bastionvault: $hsm_min_wrap_copies = 2 is refused with a single pool member.')
+    }
+    if $hsm_credential_dir !~ /\A\/var\/lib\/bvault\/data\// {
+      fail("bastionvault: \$hsm_credential_dir must be under /var/lib/bvault/data/ (the data volume); got '${hsm_credential_dir}'.")
+    }
+    $hsm_members.each |$_m, $_spec| {
+      $_has_conn = $_spec['connector'] != undef
+      $_has_gw   = $_spec['gateway'] != undef
+      if $_has_conn == $_has_gw {
+        fail("bastionvault: \$hsm_members['${_m}'] needs exactly one of connector or gateway.")
+      }
+      if $_spec['gateway'] != undef and $_spec['gateway'] !~ /\Ahttps:\/\// {
+        fail("bastionvault: \$hsm_members['${_m}'].gateway must be an https:// URL.")
+      }
+    }
+    $_gateway_members = $hsm_members.filter |$_m, $_spec| { $_spec['gateway'] != undef }
+    if !empty($_gateway_members) and $hsm_link == undef {
+      fail('bastionvault: a pool member uses a gateway, so $hsm_link { ca_file, cert_file, key_file } is required.')
     }
   }
 
@@ -682,6 +763,49 @@ class bastionvault (
   # Host path that maps to $hsm_mock_state_path inside the container. Only used
   # when pinning material; validated above to live under the data volume.
   $hsm_mock_state_host_path = regsubst($hsm_mock_state_path, '\A/var/lib/bvault/data', $data_dir)
+
+  # Pool block of `hsm "yubihsm2" { … }`, built here because EPP lambdas render
+  # undef under regent. '' for the per-node topology.
+  if $hsm_topology == 'pool' {
+    # At most two members, rendered in name order from two fixed slots (no
+    # lambdas: they render undef under regent).
+    $_hsm_mnames = sort(keys($hsm_members))
+    $_hsm_m0n    = $_hsm_mnames[0]
+    $_hsm_m0     = $hsm_members[$_hsm_m0n]
+    $_hsm_m0_how = $_hsm_m0['gateway'] ? {
+      undef   => "connector = \"${_hsm_m0['connector']}\"",
+      default => "gateway   = \"${_hsm_m0['gateway']}\"",
+    }
+    $_hsm_m0_hcl = "  member \"${_hsm_m0n}\" {\n    ${_hsm_m0_how}\n    serial    = \"${_hsm_m0['serial']}\"\n  }\n"
+    if length($_hsm_mnames) > 1 {
+      $_hsm_m1n    = $_hsm_mnames[1]
+      $_hsm_m1     = $hsm_members[$_hsm_m1n]
+      $_hsm_m1_how = $_hsm_m1['gateway'] ? {
+        undef   => "connector = \"${_hsm_m1['connector']}\"",
+        default => "gateway   = \"${_hsm_m1['gateway']}\"",
+      }
+      $_hsm_m1_hcl = "  member \"${_hsm_m1n}\" {\n    ${_hsm_m1_how}\n    serial    = \"${_hsm_m1['serial']}\"\n  }\n"
+    } else {
+      $_hsm_m1_hcl = ''
+    }
+    $_hsm_link_block = $hsm_link ? {
+      undef   => '',
+      default => "  link {\n    ca_file   = \"${hsm_link['ca_file']}\"\n    cert_file = \"${hsm_link['cert_file']}\"\n    key_file  = \"${hsm_link['key_file']}\"\n  }\n",
+    }
+    $_hsm_roots_line = $hsm_attestation_roots_file ? {
+      undef   => '',
+      default => "  attestation_roots_file = \"${hsm_attestation_roots_file}\"\n",
+    }
+    $_hsm_copies_line = $hsm_min_wrap_copies ? {
+      undef   => '',
+      default => "  min_wrap_copies = ${hsm_min_wrap_copies}\n",
+    }
+    $hsm_pool_hcl = "  topology       = \"pool\"\n  credential_dir = \"${hsm_credential_dir}\"\n${_hsm_roots_line}  recovery       = \"${hsm_recovery}\"\n${_hsm_copies_line}${_hsm_m0_hcl}${_hsm_m1_hcl}${_hsm_link_block}"
+  } else {
+    $hsm_pool_hcl = ''
+  }
+  # Host path of the pool credential directory (data volume).
+  $hsm_credential_host_dir = regsubst($hsm_credential_dir, '^/var/lib/bvault/data', $data_dir)
 
   # Host path of the YubiHSM password EnvironmentFile.
   $hsm_env_file = "${config_dir}/hsm.env"

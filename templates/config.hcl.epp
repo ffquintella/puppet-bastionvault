@@ -38,6 +38,8 @@
       Optional[String[1]]           $hsm_pqc_key_cache_ttl,
       Stdlib::Absolutepath          $hsm_mock_state_path,
       Hash[String[1], Optional[Integer[0,65535]]] $hsm_object_ids,
+      String                        $hsm_topology,
+      String                        $hsm_pool_hcl,
 | -%>
 <%- # BastionVault config.hcl — rendered by Puppet. Mirrors the schema in
     # ../BastionVault/config/{single-node,ha-cluster}.hcl exactly.
@@ -146,12 +148,14 @@ mcp {
 # (hsm_mock / hsm_yubihsm2) baked in; the active one is selected here.
 hsm "<%= $hsm_backend %>" {
 <%-   if $hsm_backend == 'yubihsm2' { -%>
+<%-     if $hsm_topology != 'pool' { -%>
   connector   = "<%= $hsm_connector %>"
   # Password is read from the environment (injected via the EnvironmentFile),
   # never stored in this file in the clear.
   password    = "env:<%= $hsm_password_env %>"
-<%-     if $hsm_domains and !empty($hsm_domains) { -%>
+<%-       if $hsm_domains and !empty($hsm_domains) { -%>
   domains     = [<%= $hsm_domains.join(', ') %>]
+<%-       } -%>
 <%-     } -%>
 <%-   } else { -%>
   # Software mock — NO hardware protection; dev/homolog only. On an HA cluster
@@ -161,13 +165,16 @@ hsm "<%= $hsm_backend %>" {
 <%-   if $hsm_node_id { -%>
   node_id     = "<%= $hsm_node_id %>"
 <%-   } -%>
-<%-   if $hsm_recovery != 'none' { -%>
+<%-   if $hsm_topology != 'pool' and $hsm_recovery != 'none' { -%>
   recovery    = "<%= $hsm_recovery %>"
+<%-   } -%>
+<%-   if $hsm_topology == 'pool' { -%>
+<%= $hsm_pool_hcl -%>
 <%-   } -%>
 <%-   if $hsm_pqc_key_cache_ttl { -%>
   pqc_key_cache_ttl = "<%= $hsm_pqc_key_cache_ttl %>"
 <%-   } -%>
-<%-   $hsm_object_ids.each |$k, $v| { if $v != undef { -%>
+<%-   $hsm_object_ids.each |$k, $v| { if $v != undef and $hsm_topology != 'pool' { -%>
   <%= sprintf('%-19s', $k) %> = <%= $v %>
 <%-   } } -%>
 }

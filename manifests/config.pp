@@ -117,6 +117,8 @@ class bastionvault::config {
         'hsm_pqc_key_cache_ttl'                => $bastionvault::hsm_pqc_key_cache_ttl,
         'hsm_mock_state_path'                  => $bastionvault::hsm_mock_state_path,
         'hsm_object_ids'                       => $bastionvault::hsm_object_ids,
+        'hsm_topology'                         => $bastionvault::hsm_topology,
+        'hsm_pool_hcl'                         => $bastionvault::hsm_pool_hcl,
     }),
     show_diff => false,
   }
@@ -216,7 +218,17 @@ class bastionvault::config {
   # yubihsm2: password injected as an EnvironmentFile so it never lands in the
   # world-inspectable Quadlet unit or in config.hcl. config.hcl references it as
   # env:BASTIONVAULT_HSM_PASSWORD; the Quadlet loads this file at container start.
-  if $bastionvault::hsm_backend == 'yubihsm2' and $bastionvault::hsm_password_sensitive != undef {
+  # Pool: per-node credentials live here (data volume, 0700, service user).
+  if $bastionvault::hsm_topology == 'pool' {
+    file { $bastionvault::hsm_credential_host_dir:
+      ensure => directory,
+      owner  => $user,
+      group  => $group,
+      mode   => '0700',
+    }
+  }
+
+  if $bastionvault::hsm_backend == 'yubihsm2' and $bastionvault::hsm_topology == 'per-node' and $bastionvault::hsm_password_sensitive != undef {
     file { $bastionvault::hsm_env_file:
       ensure    => file,
       owner     => $user,

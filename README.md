@@ -228,6 +228,61 @@ The helper refuses to overwrite existing files, so re-run `init-ca` only when yo
 really want a new CA (it invalidates every certificate it issued). Run
 `bash spec/pki/bvault_hsm_pki_test.sh` to exercise the helper.
 
+### HSM pool topology (two YubiHSMs for the cluster)
+
+`hsm_topology => 'pool'` makes both nodes share up to two devices. Each node
+reaches the device on its own host by `connector` and the other host's device
+through that host's `bvault hsm-gateway` (mTLS, see the PKI helper above). Pool
+nodes keep per-device credentials in `hsm_credential_dir` instead of a password,
+so `hsm_connector`, `hsm_password` and the object-id overrides are not used
+(the server refuses them in a pool).
+
+> Upstream status: the YubiHSM 2 path of the pool has not yet had its hardware
+> validation (BastionVault T454 phase 7). Check before using it in production.
+
+Example for a node that hosts `hsm-b` and reaches `hsm-a` on the peer:
+
+```yaml
+bastionvault::hsm_backend: yubihsm2
+bastionvault::hsm_topology: pool
+bastionvault::hsm_node_id: prd-0001          # also the link cert's DNS SAN
+bastionvault::hsm_recovery: none             # explicit; 'shamir-ceremony' also valid
+bastionvault::hsm_attestation_roots_file: /hsm-out/yubico-attestation.pem
+bastionvault::hsm_members:
+  hsm-b: { serial: '0036470560', connector: 'http://127.0.0.1:12345' }
+  hsm-a: { serial: '0036470559', gateway: 'https://peer.example.org:8250' }
+bastionvault::hsm_link:                      # container paths (hsm_out_dir is /hsm-out)
+  ca_file:   /hsm-out/ca.pem
+  cert_file: /hsm-out/prd-0001.pem
+  key_file:  /hsm-out/prd-0001.key
+```
+
+The module renders the `hsm "yubihsm2" { topology = "pool" … member … link … }`
+block, creates `hsm_credential_dir` (host side under `data_dir`, 0700) and
+validates the combination at compile time (1–2 members; each with exactly one of
+`connector`/`gateway`; a `link` whenever a gateway is used; `yubihsm2` only;
+`hsm_node_id` required). The member name is the name you pass to
+`bootstrap --bundle <name>=…`, and `serial` is the device serial in its bundle.
+
+The Yubico attestation trust file (`hsm_attestation_roots_file`) is **yours to
+supply**: download the YubiHSM attestation root and intermediates from Yubico,
+check their fingerprints, concatenate them into one PEM and install it through
+`hsm_link_files` (e.g. as `yubico-attestation.pem`). Without it every YubiHSM 2
+attestation is refused.
+
+Then, once per cluster and not by Puppet (it needs the admin passwords):
+
+```sh
+bvault operator hsm bootstrap --bundle hsm-a=/hsm-out/hsm-a.json \
+    --bundle hsm-b=/hsm-out/hsm-b.json --admin hsm-a --admin hsm-b
+bvault operator init
+```
+
+The gateway certificate's SAN must equal the host in the peer's
+`gateway = "https://<host>:8250"`, and each node's link certificate needs a DNS
+SAN equal to its `hsm_node_id`, which is also what the gateway's
+`allowed_clients` lists.
+
 ### HA cluster with the mock
 
 Each node runs its own mock "device", and the wrapped KEK is bound to the
