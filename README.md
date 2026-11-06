@@ -283,6 +283,26 @@ The gateway certificate's SAN must equal the host in the peer's
 SAN equal to its `hsm_node_id`, which is also what the gateway's
 `allowed_clients` lists.
 
+### HSM gateway service
+
+With `hsm_backend => 'yubihsm2'` the module also runs `bvault hsm-gateway` as its
+own rootless Quadlet service, `bastionvault-hsm-gateway.service`, from the same
+image (`hsm_gateway_enable`, default `true`). It runs with host networking
+(it listens on the port in your `hsm-gateway.hcl`, normally 8250, and forwards to
+the connector on loopback), mounts `hsm-gateway/` and `hsm_out_dir` read-only,
+and has `Restart=always`, so it comes back after a crash and starts at boot
+through the service user's linger. The server container is not touched when only
+the gateway changes.
+
+Puppet restarts the gateway when `hsm-gateway.hcl`, any file in `hsm_link_files`
+(the gateway certificate and key, the CA) or the unit changes, because it reads
+them only at start. Open the gateway port between the nodes (`frwRule::ports`).
+
+```sh
+sudo -u bastionvault env XDG_RUNTIME_DIR=/run/user/$(id -u bastionvault) systemctl --user status bastionvault-hsm-gateway
+sudo -u bastionvault env XDG_RUNTIME_DIR=/run/user/$(id -u bastionvault) journalctl --user -u bastionvault-hsm-gateway -n 50
+```
+
 ### HA cluster with the mock
 
 Each node runs its own mock "device", and the wrapped KEK is bound to the

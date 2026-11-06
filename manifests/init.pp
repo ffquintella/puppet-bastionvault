@@ -213,6 +213,13 @@
 #   via $hsm_link_files (then it is /hsm-out/<name>).
 # @param hsm_min_wrap_copies Pool only: copies a new key needs before it is
 #   stored, 1 (default) or 2. 2 is refused with a single member.
+# @param hsm_gateway_enable When true (default) and $hsm_backend is `yubihsm2`, the
+#   module runs `bvault hsm-gateway` as its own rootless Quadlet service
+#   (`bastionvault-hsm-gateway.service`, `Restart=always`, started at boot through
+#   the user's linger) from the same image, with $hsm_gateway_config_dir and
+#   $hsm_out_dir mounted read-only. It is restarted when hsm-gateway.hcl, its
+#   certificate files (hsm_link_files) or the unit change. The listen port comes
+#   from your `hsm-gateway.hcl` (normally 8250): open it between the nodes.
 # @param hsm_link_files TLS material for the HSM link (CA, gateway and node
 #   certificates/keys) generated OFF the servers with `tools/bvault-hsm-pki` and
 #   installed verbatim into `hsm_out_dir`, so every node gets byte-identical
@@ -402,6 +409,9 @@ class bastionvault (
   Optional[Stdlib::Absolutepath]               $hsm_attestation_roots_file = undef,
   Optional[Integer[1, 2]]                      $hsm_min_wrap_copies        = undef,
 
+  # HSM gateway as a managed service (yubihsm2)
+  Boolean                                      $hsm_gateway_enable         = true,
+
   # HSM link TLS files (from tools/bvault-hsm-pki), installed into $hsm_out_dir
   Hash[Pattern[/\A[A-Za-z0-9][A-Za-z0-9._-]*\z/], Struct[{
         Optional['content'] => String[1],
@@ -544,6 +554,10 @@ class bastionvault (
   # inode, so the container would keep reading a stale hsm-gateway.hcl.
   $hsm_gateway_config_dir = "${config_dir}/hsm-gateway"
   $hsm_gateway_config     = "${hsm_gateway_config_dir}/hsm-gateway.hcl"
+  $hsm_gateway_service    = $hsm_backend ? {
+    'yubihsm2' => $hsm_gateway_enable,
+    default    => false,
+  }
   if $hsm_backend == 'yubihsm2' and $hsm_gateway_config_content == undef and $hsm_gateway_config_source == undef {
     fail("bastionvault: \$hsm_backend is \"${hsm_backend}\" but neither \$hsm_gateway_config_content nor \$hsm_gateway_config_source is set — hsm-gateway.hcl is required for the yubihsm2 backend.")
   }

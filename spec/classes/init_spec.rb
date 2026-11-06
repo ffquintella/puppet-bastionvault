@@ -324,6 +324,28 @@ if catalog_harness == :regent
       it { is_expected.to compile.and_raise_error(%r{only valid with}) }
     end
 
+    context 'with the yubihsm2 gateway service (uid known)' do
+      let(:params) do
+        {
+          uid:                        2001,
+          hsm_backend:                'yubihsm2',
+          hsm_connector:              'http://127.0.0.1:12345',
+          hsm_password:               'sekret',
+          hsm_gateway_config_content: "gateway\n",
+          hsm_link_files:             { 'hsm-a.pem' => { 'content' => "C\n" } },
+        }
+      end
+
+      it { is_expected.to compile }
+
+      it 'writes the gateway Quadlet' do
+        is_expected.to contain_file('/var/lib/bastionvault/.config/containers/systemd/bastionvault-hsm-gateway.container')
+          .with_content(%r{ContainerName=bastionvault-hsm-gateway})
+          .with_content(%r{Exec=hsm-gateway --config /etc/bvault/hsm-gateway/hsm-gateway\.hcl})
+          .with_content(%r{Restart=always})
+      end
+    end
+
     context 'with hsm_link_files carrying ca.key' do
       let(:params) { { hsm_link_files: { 'ca.key' => { 'content' => 'x' } } } }
 
@@ -942,6 +964,33 @@ describe 'bastionvault' do
         it 'does not write the password EnvironmentFile' do
           is_expected.not_to contain_file('/srv/application-config/bastionvault/hsm.env')
         end
+      end
+
+      context 'with the gateway service disabled' do
+        let(:params) do
+          { uid: 2001, hsm_backend: 'yubihsm2', hsm_connector: 'http://127.0.0.1:12345', hsm_password: 'sekret',
+            hsm_gateway_config_content: "gateway\n", hsm_gateway_enable: false }
+        end
+
+        it { is_expected.not_to contain_file('/var/lib/bastionvault/.config/containers/systemd/bastionvault-hsm-gateway.container') }
+        it { is_expected.not_to contain_exec('bastionvault-hsm-gateway-start') }
+      end
+
+      context 'with the mock backend (no gateway service)' do
+        let(:params) { { uid: 2001, hsm_backend: 'mock' } }
+
+        it { is_expected.not_to contain_file('/var/lib/bastionvault/.config/containers/systemd/bastionvault-hsm-gateway.container') }
+      end
+
+      context 'with the gateway service (execs)' do
+        let(:params) do
+          { uid: 2001, hsm_backend: 'yubihsm2', hsm_connector: 'http://127.0.0.1:12345', hsm_password: 'sekret',
+            hsm_gateway_config_content: "gateway\n" }
+        end
+
+        it { is_expected.to contain_exec('bastionvault-hsm-gateway-start').with_unless(%r{is-active bastionvault-hsm-gateway\.service}) }
+        it { is_expected.to contain_exec('bastionvault-hsm-gateway-restart').with_refreshonly(true) }
+        it { is_expected.to contain_file('/srv/application-config/bastionvault/hsm-gateway/hsm-gateway.hcl').that_notifies('Exec[bastionvault-hsm-gateway-restart]') }
       end
 
       context 'with yubihsm2 but no connector' do

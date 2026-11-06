@@ -119,6 +119,55 @@ class bastionvault::service {
       ],
     }
 
+    # HSM gateway: its own Quadlet so it stays up independently of the server
+    # container (Restart=always, started at boot through the user's linger).
+    if $bastionvault::hsm_gateway_service {
+      $_gw_unit_path = "${home}/.config/containers/systemd/bastionvault-hsm-gateway.container"
+
+      file { $_gw_unit_path:
+        ensure  => file,
+        owner   => $user,
+        group   => $group,
+        mode    => '0640',
+        content => epp('bastionvault/bastionvault-hsm-gateway.container.epp', {
+            'image_ref'              => $bastionvault::image_ref,
+            'container_uid'          => $bastionvault::container_uid,
+            'container_gid'          => $bastionvault::container_gid,
+            'hsm_gateway_config_dir' => $bastionvault::hsm_gateway_config_dir,
+            'hsm_out_dir'            => $bastionvault::hsm_out_dir,
+            'log_level'              => $bastionvault::log_level,
+        }),
+        notify  => Exec['bastionvault-user-daemon-reload'],
+      }
+
+      exec { 'bastionvault-hsm-gateway-restart':
+        command     => "${runas} /usr/bin/systemctl --user restart bastionvault-hsm-gateway.service",
+        cwd         => $home,
+        refreshonly => true,
+      }
+
+      exec { 'bastionvault-hsm-gateway-start':
+        command => "${runas} /usr/bin/systemctl --user start bastionvault-hsm-gateway.service",
+        unless  => "${runas} /usr/bin/systemctl --user is-active bastionvault-hsm-gateway.service",
+        cwd     => $home,
+        require => [
+          File[$_gw_unit_path],
+          File[$bastionvault::hsm_gateway_config],
+          Exec['bastionvault-user-daemon-reload'],
+          Exec['bastionvault-podman-migrate'],
+        ],
+      }
+
+      # A unit change needs the reload first; config or certificate changes
+      # restart the gateway (it reads them only at start).
+      Exec['bastionvault-user-daemon-reload'] -> Exec['bastionvault-hsm-gateway-restart']
+      File[$_gw_unit_path] ~> Exec['bastionvault-hsm-gateway-restart']
+      File[$bastionvault::hsm_gateway_config] ~> Exec['bastionvault-hsm-gateway-restart']
+      $bastionvault::hsm_link_files.each |$_n, $_s| {
+        File["${bastionvault::hsm_out_dir}/${_n}"] ~> Exec['bastionvault-hsm-gateway-restart']
+      }
+    }
+
     # System-level wrapper unit so operators can run `systemctl status
     # bastionvault` (and start/stop/reload) without remembering the
     # `--user --machine=<user>@.host` incantation. The wrapper is a

@@ -1,0 +1,38 @@
+<%- | String[1]            $image_ref,
+      Integer[0]           $container_uid,
+      Integer[0]           $container_gid,
+      Stdlib::Absolutepath $hsm_gateway_config_dir,
+      Stdlib::Absolutepath $hsm_out_dir,
+      String[1]            $log_level,
+| -%>
+[Unit]
+Description=BastionVault HSM gateway (rootless, managed by Puppet)
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+Image=<%= $image_ref %>
+ContainerName=bastionvault-hsm-gateway
+# Same UID/GID mapping as the server container, so the 0600 key files owned by
+# the service user on the host are readable inside the container.
+UserNS=keep-id:uid=<%= $container_uid %>,gid=<%= $container_gid %>
+# Host networking: the gateway listens on the host (its `listen`, normally
+# 0.0.0.0:8250) and forwards to the yubihsm-connector on the host's loopback.
+Network=host
+# The config DIRECTORY is mounted (not the file) so a rewrite is visible without
+# recreating the container; the gateway re-reads it when Puppet restarts it.
+Volume=<%= $hsm_gateway_config_dir %>:/etc/bvault/hsm-gateway:ro,z
+# CA, gateway certificate and key (installed through bastionvault::hsm_link_files).
+Volume=<%= $hsm_out_dir %>:/hsm-out:ro,z
+Environment=BVAULT_HSM_GATEWAY_LOG_LEVEL=<%= $log_level %>
+# The image entrypoint is /usr/local/bin/bvault; this replaces its default
+# `server --config …` command.
+Exec=hsm-gateway --config /etc/bvault/hsm-gateway/hsm-gateway.hcl
+
+[Service]
+# The pool depends on this process: always bring it back.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
