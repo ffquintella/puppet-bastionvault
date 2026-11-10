@@ -87,6 +87,20 @@
 # @param cluster_tls_raft_no_verify Skip peer certificate verification on the
 #   Raft channel (`tls_raft_no_verify` in config.hcl). Useful when peers use
 #   self-signed certs whose CA isn't yet distributed.
+# @param cluster_raft_heartbeat_interval_ms Raft heartbeat interval in ms
+#   (`raft_heartbeat_interval_ms` in the storage "hiqlite" block). Also the
+#   time-to-live of each AppendEntries call. undef (default) renders nothing and
+#   keeps BastionVault's default (500). Needs both election timeouts set too.
+# @param cluster_raft_election_timeout_min_ms Minimum Raft election timeout in
+#   ms (`raft_election_timeout_min_ms`). undef keeps the default (1500). Must be
+#   at least 3 x the heartbeat.
+# @param cluster_raft_election_timeout_max_ms Maximum Raft election timeout in
+#   ms (`raft_election_timeout_max_ms`, at most 300000). undef keeps the default
+#   (3000). Must be greater than the minimum.
+# @param cluster_raft_allow_aggressive_timeouts Render
+#   `raft_allow_aggressive_timeouts = true`, required by BastionVault for a
+#   heartbeat below 500 or an election minimum below 1500. Rendered only when
+#   true. All raft timing values must be identical on every node.
 # @param cluster_tls_api_no_verify  Skip peer certificate verification on the
 #   hiqlite internal API (`tls_api_no_verify` in config.hcl).
 # @param cluster_tls_raft_cert    Optional custom cert path inside the container.
@@ -345,6 +359,10 @@ class bastionvault (
   Boolean                                      $cluster_tls_api_disable    = false,
   Boolean                                      $cluster_tls_raft_no_verify = false,
   Boolean                                      $cluster_tls_api_no_verify  = false,
+  Optional[Integer[100, 60000]]                $cluster_raft_heartbeat_interval_ms   = undef,
+  Optional[Integer[1]]                         $cluster_raft_election_timeout_min_ms = undef,
+  Optional[Integer[1, 300000]]                 $cluster_raft_election_timeout_max_ms = undef,
+  Boolean                                      $cluster_raft_allow_aggressive_timeouts = false,
   Optional[Stdlib::Absolutepath]               $cluster_tls_raft_cert    = undef,
   Optional[Stdlib::Absolutepath]               $cluster_tls_raft_key     = undef,
   Optional[Stdlib::Absolutepath]               $cluster_tls_api_cert     = undef,
@@ -492,6 +510,29 @@ class bastionvault (
       if $n['api_host'] in ['0.0.0.0', '::', '', undef] {
         fail("bastionvault: nodes[id=${n['id']}].api_host is not a routable host. Use the peer's FQDN.")
       }
+    }
+  }
+
+  # ── Raft timing validation ───────────────────────────────────────────
+  # Same rules BastionVault enforces at startup, caught here so a bad value
+  # fails the catalog instead of crash-looping the node. Nothing runs when none
+  # of the three values is set.
+  $_hb  = $cluster_raft_heartbeat_interval_ms
+  $_emin = $cluster_raft_election_timeout_min_ms
+  $_emax = $cluster_raft_election_timeout_max_ms
+
+  if $_hb != undef and ($_emin == undef or $_emax == undef) {
+    fail('bastionvault: $cluster_raft_heartbeat_interval_ms requires $cluster_raft_election_timeout_min_ms and $cluster_raft_election_timeout_max_ms to be set with it (the election minimum must be at least 3 x the heartbeat).')
+  }
+  if $_hb != undef and $_emin != undef and $_emin < ($_hb * 3) {
+    fail("bastionvault: cluster_raft_election_timeout_min_ms=${cluster_raft_election_timeout_min_ms} must be at least 3 x cluster_raft_heartbeat_interval_ms=${cluster_raft_heartbeat_interval_ms}.")
+  }
+  if $_emin != undef and $_emax != undef and $_emax <= $_emin {
+    fail("bastionvault: cluster_raft_election_timeout_max_ms=${cluster_raft_election_timeout_max_ms} must be greater than cluster_raft_election_timeout_min_ms=${cluster_raft_election_timeout_min_ms}.")
+  }
+  if !$cluster_raft_allow_aggressive_timeouts {
+    if ($_hb != undef and $_hb < 500) or ($_emin != undef and $_emin < 1500) {
+      fail('bastionvault: $cluster_raft_heartbeat_interval_ms below 500 or $cluster_raft_election_timeout_min_ms below 1500 requires $cluster_raft_allow_aggressive_timeouts = true.')
     }
   }
 

@@ -37,6 +37,9 @@ bastionvault::cluster_tls_raft_disable: false
 bastionvault::cluster_tls_api_disable: false
 bastionvault::cluster_tls_raft_no_verify: false
 bastionvault::cluster_tls_api_no_verify: false
+# cluster_raft_{heartbeat_interval,election_timeout_min,election_timeout_max}_ms
+# default to undef (key omitted) so BastionVault's own defaults apply.
+bastionvault::cluster_raft_allow_aggressive_timeouts: false
 
 bastionvault::pid_file: '/var/run/bvault.pid'
 

@@ -215,6 +215,11 @@ class bastionvault (
   # HA TLS toggles (mirrors hiqlite block)
   Boolean                     $cluster_tls_raft_disable = false,
   Boolean                     $cluster_tls_api_disable  = false,
+  # Raft timing (storage "hiqlite"); undef renders nothing. See README.
+  Optional[Integer[100,60000]] $cluster_raft_heartbeat_interval_ms   = undef,
+  Optional[Integer[1]]         $cluster_raft_election_timeout_min_ms = undef,
+  Optional[Integer[1,300000]]  $cluster_raft_election_timeout_max_ms = undef,
+  Boolean                      $cluster_raft_allow_aggressive_timeouts = false,
   # In-container path overrides (rarely needed — only when you bring your own mount).
   Optional[Stdlib::Absolutepath] $cluster_tls_raft_cert = undef,
   Optional[Stdlib::Absolutepath] $cluster_tls_raft_key  = undef,

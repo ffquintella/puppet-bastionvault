@@ -428,12 +428,49 @@ diffs.
 | --------------------------------- | ----------------------------------------- |
 | `cluster_tls_raft_disable`        | `Boolean` (default `false`)               |
 | `cluster_tls_raft_no_verify`      | `Boolean` (default `false`) — skip peer cert verification (`tls_raft_no_verify`) |
+| `cluster_raft_heartbeat_interval_ms`   | `Optional[Integer[100, 60000]]` (default `undef`) — `raft_heartbeat_interval_ms`; BastionVault default 500 |
+| `cluster_raft_election_timeout_min_ms` | `Optional[Integer[1]]` (default `undef`) — `raft_election_timeout_min_ms`; default 1500, must be >= 3 x heartbeat |
+| `cluster_raft_election_timeout_max_ms` | `Optional[Integer[1, 300000]]` (default `undef`) — `raft_election_timeout_max_ms`; default 3000, must be > the minimum |
+| `cluster_raft_allow_aggressive_timeouts` | `Boolean` (default `false`) — renders `raft_allow_aggressive_timeouts = true`; required for heartbeat < 500 or election minimum < 1500 |
 | `cluster_tls_raft_cert_content`   | `Optional[String]`                        |
 | `cluster_tls_raft_cert_base64`    | `Optional[String]`                        |
 | `cluster_tls_raft_key_content`    | `Optional[Sensitive[String]]`             |
 | `cluster_tls_raft_key_base64`     | `Optional[Variant[Sensitive[String], String]]` |
 | `cluster_tls_raft_cert`           | `Optional[Stdlib::Absolutepath]` — in-container path override |
 | `cluster_tls_raft_key`            | `Optional[Stdlib::Absolutepath]` — in-container path override |
+
+#### Raft timing on a lossy link
+
+Symptom: the log shows `Cluster lost quorum` many times an hour, together with
+`timeout after 500ms when AppendEntries`, while nodes, clocks and NICs look
+healthy. The Raft heartbeat (500 ms by default) is also the time-to-live of each
+AppendEntries call, so two TCP retransmissions (200 ms, then 400 ms) already
+exceed it. **Fix the network path first**; raise the timeouts only if the loss
+cannot be removed.
+
+Reference values for a lossy two-site link:
+
+```puppet
+class { 'bastionvault':
+  cluster_raft_heartbeat_interval_ms   => 2000,
+  cluster_raft_election_timeout_min_ms => 6000,
+  cluster_raft_election_timeout_max_ms => 12000,
+}
+```
+
+- Each parameter left `undef` renders no line, so BastionVault's default applies and
+  existing nodes' `config.hcl` is unchanged. Setting the heartbeat requires both
+  election values; the catalog fails otherwise (min >= 3 x heartbeat, max > min,
+  and nothing below 500 / 1500 without the aggressive flag).
+- Use the **same values on every node**.
+- `config.hcl` changes do not by themselves restart the server container in this
+  module; the new values take effect on the next restart of `bastionvault.service`.
+  Because a restart takes the node out of the cluster, apply and restart **one node,
+  then the other**, never both at once.
+- This does not give a two-node cluster any fault tolerance: losing either node
+  still loses quorum.
+- Requires a BastionVault build that includes T479 (the first build containing
+  T479; the version number is not yet known).
 
 When you supply content or base64, the module writes the file under
 `$tls_dir` and config.hcl is rendered to point at the corresponding

@@ -14,6 +14,10 @@
       Optional[Stdlib::Absolutepath] $cluster_tls_api_cert_path_effective,
       Optional[Stdlib::Absolutepath] $cluster_tls_api_key_path_effective,
       Boolean                       $cluster_tls_api_no_verify,
+      Optional[Integer[100, 60000]] $cluster_raft_heartbeat_interval_ms,
+      Optional[Integer[1]]          $cluster_raft_election_timeout_min_ms,
+      Optional[Integer[1, 300000]]  $cluster_raft_election_timeout_max_ms,
+      Boolean                       $cluster_raft_allow_aggressive_timeouts,
       Stdlib::IP::Address           $listen_address,
       Stdlib::Port                  $service_port,
       Boolean                       $tls_disable,
@@ -85,6 +89,18 @@ storage "hiqlite" {
   tls_api_no_verify = true
 <%-     } -%>
 <%-   } -%>
+<%- } -%>
+<%- if $cluster_raft_heartbeat_interval_ms { -%>
+  raft_heartbeat_interval_ms = <%= $cluster_raft_heartbeat_interval_ms %>
+<%- } -%>
+<%- if $cluster_raft_election_timeout_min_ms { -%>
+  raft_election_timeout_min_ms = <%= $cluster_raft_election_timeout_min_ms %>
+<%- } -%>
+<%- if $cluster_raft_election_timeout_max_ms { -%>
+  raft_election_timeout_max_ms = <%= $cluster_raft_election_timeout_max_ms %>
+<%- } -%>
+<%- if $cluster_raft_allow_aggressive_timeouts { -%>
+  raft_allow_aggressive_timeouts = true
 <%- } -%>
 }
 

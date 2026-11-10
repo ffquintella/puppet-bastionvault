@@ -415,6 +415,96 @@ if catalog_harness == :regent
       is_expected.to contain_file('/usr/local/bin/bvault-ctl').with_content(%r{hsm-status})
     end
 
+    context 'raft timing (none set)' do
+      let(:params) { { uid: 1234 } }
+
+      # Positive match on the surrounding lines: secret_api is
+      # the last storage line and the block closes with no raft_* line in between (without_content
+      # is a no-op under regent).
+      it 'renders none of the four raft timing keys' do
+        is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+          .with_content(%r{secret_api\s+= "[^"]*"\n\}\n\nlistener "tcp"})
+      end
+    end
+
+    context 'raft timing reference values' do
+      let(:params) do
+        {
+          uid:                                  1234,
+          cluster_raft_heartbeat_interval_ms:   2000,
+          cluster_raft_election_timeout_min_ms: 6000,
+          cluster_raft_election_timeout_max_ms: 12_000,
+        }
+      end
+
+      it 'renders unquoted integers and no aggressive line' do
+        is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+          .with_content(%r{raft_heartbeat_interval_ms = 2000\n  raft_election_timeout_min_ms = 6000\n  raft_election_timeout_max_ms = 12000\n\}\n\nlistener})
+      end
+    end
+
+    context 'raft timing with aggressive flag' do
+      let(:params) do
+        {
+          uid:                                  1234,
+          cluster_raft_heartbeat_interval_ms:     250,
+          cluster_raft_election_timeout_min_ms:   1500,
+          cluster_raft_election_timeout_max_ms:   3000,
+          cluster_raft_allow_aggressive_timeouts: true,
+        }
+      end
+
+      it 'renders raft_allow_aggressive_timeouts = true' do
+        is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+          .with_content(%r{raft_heartbeat_interval_ms = 250\n})
+          .with_content(%r{raft_allow_aggressive_timeouts = true\n\}\n\nlistener})
+      end
+    end
+
+    context 'raft timing: heartbeat alone' do
+      let(:params) { { uid: 1234, cluster_raft_heartbeat_interval_ms: 2000 } }
+
+      it { is_expected.to compile.and_raise_error(%r{cluster_raft_heartbeat_interval_ms requires}) }
+    end
+
+    context 'raft timing: election minimum below 3 x heartbeat' do
+      let(:params) do
+        {
+          uid:                                  1234,
+          cluster_raft_heartbeat_interval_ms:   2000,
+          cluster_raft_election_timeout_min_ms: 5000,
+          cluster_raft_election_timeout_max_ms: 12_000,
+        }
+      end
+
+      it { is_expected.to compile.and_raise_error(%r{cluster_raft_election_timeout_min_ms=\S+ must be at least 3 x}) }
+    end
+
+    context 'raft timing: maximum not above minimum' do
+      let(:params) do
+        {
+          uid:                                  1234,
+          cluster_raft_election_timeout_min_ms: 6000,
+          cluster_raft_election_timeout_max_ms: 6000,
+        }
+      end
+
+      it { is_expected.to compile.and_raise_error(%r{cluster_raft_election_timeout_max_ms=\S+ must be greater}) }
+    end
+
+    context 'raft timing: below defaults without the aggressive flag' do
+      let(:params) do
+        {
+          uid:                                  1234,
+          cluster_raft_heartbeat_interval_ms:   250,
+          cluster_raft_election_timeout_min_ms: 1500,
+          cluster_raft_election_timeout_max_ms: 3000,
+        }
+      end
+
+      it { is_expected.to compile.and_raise_error(%r{cluster_raft_allow_aggressive_timeouts}) }
+    end
+
     # NOTE: mode=ha is NOT exercised here. The $nodes parameter is typed
     # Array[Struct[{ id, raft_host => Stdlib::Host, ... }]]; regent's type
     # checker cannot validate that nested Struct/Stdlib::Host alias and
@@ -771,6 +861,91 @@ describe 'bastionvault' do
             .with_content(%r{tls_raft_no_verify\s*=\s*true})
             .with_content(%r{tls_api_no_verify\s*=\s*true})
         end
+      end
+
+      context 'raft timing (none set)' do
+        let(:params) { { mode: 'ha', node_id: 1, nodes: [{ 'id' => 1, 'raft_host' => '10.0.0.11', 'raft_port' => 8210, 'api_host' => '10.0.0.11', 'api_port' => 8220 }] } }
+
+        # Positive match on the surrounding lines: the nodes list closes and the
+        # storage block closes with no raft_* line in between (without_content
+        # is a no-op under regent).
+        it 'renders none of the four raft timing keys' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{\]\n\}\n\nlistener "tcp"})
+        end
+      end
+
+      context 'raft timing reference values' do
+        let(:params) do
+          {
+            cluster_raft_heartbeat_interval_ms:   2000,
+            cluster_raft_election_timeout_min_ms: 6000,
+            cluster_raft_election_timeout_max_ms: 12_000,
+          }
+        end
+
+        it 'renders unquoted integers and no aggressive line' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{raft_heartbeat_interval_ms = 2000\n  raft_election_timeout_min_ms = 6000\n  raft_election_timeout_max_ms = 12000\n\}\n\nlistener})
+        end
+      end
+
+      context 'raft timing with aggressive flag' do
+        let(:params) do
+          {
+            cluster_raft_heartbeat_interval_ms:     250,
+            cluster_raft_election_timeout_min_ms:   1500,
+            cluster_raft_election_timeout_max_ms:   3000,
+            cluster_raft_allow_aggressive_timeouts: true,
+          }
+        end
+
+        it 'renders raft_allow_aggressive_timeouts = true' do
+          is_expected.to contain_file('/srv/application-config/bastionvault/config.hcl')
+            .with_content(%r{raft_heartbeat_interval_ms = 250\n})
+            .with_content(%r{raft_allow_aggressive_timeouts = true\n\}\n\nlistener})
+        end
+      end
+
+      context 'raft timing: heartbeat alone' do
+        let(:params) { { cluster_raft_heartbeat_interval_ms: 2000 } }
+
+        it { is_expected.to compile.and_raise_error(%r{cluster_raft_heartbeat_interval_ms requires}) }
+      end
+
+      context 'raft timing: election minimum below 3 x heartbeat' do
+        let(:params) do
+          {
+            cluster_raft_heartbeat_interval_ms:   2000,
+            cluster_raft_election_timeout_min_ms: 5000,
+            cluster_raft_election_timeout_max_ms: 12_000,
+          }
+        end
+
+        it { is_expected.to compile.and_raise_error(%r{cluster_raft_election_timeout_min_ms=\S+ must be at least 3 x}) }
+      end
+
+      context 'raft timing: maximum not above minimum' do
+        let(:params) do
+          {
+            cluster_raft_election_timeout_min_ms: 6000,
+            cluster_raft_election_timeout_max_ms: 6000,
+          }
+        end
+
+        it { is_expected.to compile.and_raise_error(%r{cluster_raft_election_timeout_max_ms=\S+ must be greater}) }
+      end
+
+      context 'raft timing: below defaults without the aggressive flag' do
+        let(:params) do
+          {
+            cluster_raft_heartbeat_interval_ms:   250,
+            cluster_raft_election_timeout_min_ms: 1500,
+            cluster_raft_election_timeout_max_ms: 3000,
+          }
+        end
+
+        it { is_expected.to compile.and_raise_error(%r{cluster_raft_allow_aggressive_timeouts}) }
       end
 
       context 'with custom listen_port (host networking)' do
