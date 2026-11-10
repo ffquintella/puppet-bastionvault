@@ -49,8 +49,13 @@ if catalog_harness == :regent
       }
     end
 
+    # regent does not expose custom top-level facts (bastionvault_user_uid) to
+    # $facts, so pass the uid explicitly; otherwise service.pp skips the Quadlet
+    # and the system wrapper unit.
+    let(:params) { { uid: 1234 } }
+
     it { is_expected.to compile }
-    it { is_expected.to contain_class('baseapp') }
+    it { is_expected.to contain_baseapp__subid('bastionvault') }
     it { is_expected.to contain_class('bastionvault::install') }
     it { is_expected.to contain_class('bastionvault::user') }
     it { is_expected.to contain_class('bastionvault::selinux') }
@@ -165,7 +170,7 @@ if catalog_harness == :regent
     end
 
     context 'with network_mode=pasta (legacy user-mode networking)' do
-      let(:params) { { network_mode: 'pasta' } }
+      let(:params) { { uid: 1234, network_mode: 'pasta' } }
 
       it 'emits the user-mode network backend' do
         is_expected.to contain_file(quadlet).with_content(%r{^Network=pasta$})
@@ -386,7 +391,7 @@ if catalog_harness == :regent
 
     context 'with the yubihsm2 HSM backend' do
       let(:params) do
-        { hsm_backend: 'yubihsm2', hsm_gateway_config_content: 'gateway {}', hsm_connector: 'http://127.0.0.1:12345', hsm_password: 'sekret' }
+        { uid: 1234, hsm_backend: 'yubihsm2', hsm_gateway_config_content: 'gateway {}', hsm_connector: 'http://127.0.0.1:12345', hsm_password: 'sekret' }
       end
 
       it 'renders an hsm "yubihsm2" block with connector and env-ref password' do
