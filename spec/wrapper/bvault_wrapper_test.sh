@@ -99,5 +99,54 @@ PASSTHROUGH=''
 run "$work/bvault" operator hsm status
 t 'empty passthrough list: still works' flags3
 
+# 8. stdin/terminal flags of `podman exec`. With stdin on the operator's tty
+# but stdout piped, a bare `-i` leaves the exec reading the tty from a
+# background group: SIGTTIN stops it, Ctrl+C cannot reach it, later execs queue.
+PASSTHROUGH=''
+render
+# expected flags: stdin pipe/file -> -i; tty+tty -> -i -t; tty stdin, other stdout -> none
+exec_flags() { printf '%s\n' "$out" | tr -d '\r' | grep -x -e '-i' -e '-t' | tr '\n' ' '; }
+
+out=$(echo data | "$work/bvault" operator hsm status 2>&1)
+c8a() { [ "$(exec_flags)" = '-i ' ]; }
+t 'stdin pipe: -i, no -t' c8a
+out=$("$work/bvault" operator hsm status </dev/null 2>&1)
+t 'stdin /dev/null: -i, no -t' c8a
+
+if command -v python3 >/dev/null 2>&1; then
+  # pty.fork, not pty.spawn: spawn blocks when the caller's own stdin is not a tty (CI)
+  pty() {
+    python3 -c 'import os, pty, sys
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp(sys.argv[1], sys.argv[1:])
+buf = b""
+while True:
+    try:
+        d = os.read(fd, 4096)
+    except OSError:
+        break
+    if not d:
+        break
+    buf += d
+_, st = os.waitpid(pid, 0)
+sys.stdout.buffer.write(buf)
+sys.exit(os.waitstatus_to_exitcode(st))' "$@"
+  }
+
+  out=$(pty "$work/bvault" operator hsm status 2>&1)
+  c8b() { [ "$(exec_flags)" = '-i -t ' ]; }
+  t 'stdin tty + stdout tty: -i -t' c8b
+
+  out=$(pty sh -c "\"$work/bvault\" operator hsm status | cat" 2>&1)
+  c8c() { [ "$(exec_flags)" = '' ]; }
+  t 'stdin tty + stdout piped: neither -i nor -t (no tty read, cannot hang)' c8c
+
+  out=$(pty sh -c "\"$work/bvault\" operator hsm status > $work/o.txt; cat $work/o.txt" 2>&1)
+  t 'stdin tty + stdout redirected to a file: neither -i nor -t' c8c
+else
+  printf 'skip - tty cases need python3\n'
+fi
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

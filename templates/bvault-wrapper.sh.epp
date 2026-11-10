@@ -44,8 +44,15 @@
 #         bvault operator hsm provision --connector http://127.0.0.1:12345 \
 #                --out /hsm-out/hsm-a.json
 #     and the bundle appears on the host as <%= $hsm_out_dir %>/hsm-a.json.
+#   * Terminal flags: stdin a pipe/file -> `-i`; stdin and stdout a tty -> `-i -t`;
+#     stdin a tty but stdout not (`bvault ... | grep`) -> neither. A bare `-i`
+#     there leaves the exec reading the tty from a background group: SIGTTIN
+#     stops it, Ctrl+C cannot reach it and later `podman exec` calls queue.
+STDIN_FLAG=-i
 TTY_FLAG=
-if [ -t 0 ] && [ -t 1 ]; then TTY_FLAG=-t; fi
+if [ -t 0 ]; then
+  if [ -t 1 ]; then TTY_FLAG=-t; else STDIN_FLAG=; fi
+fi
 
 # Inject defaults only if the operator didn't already set them via flag or
 # env. Scan once over the args; honor both --flag=value and --flag value
@@ -192,4 +199,4 @@ sudo_env=
 # caller's cwd (e.g. /root) and the rootless user fails to chdir into it.
 cd / || exit 1
 # shellcheck disable=SC2086  # $extra, $podman_env and $sudo_env are intentionally word-split
-exec /usr/bin/sudo -n $sudo_env -u <%= $user %> /usr/bin/podman exec -i $TTY_FLAG $podman_env bastionvault bvault "$@" $extra
+exec /usr/bin/sudo -n $sudo_env -u <%= $user %> /usr/bin/podman exec $STDIN_FLAG $TTY_FLAG $podman_env bastionvault bvault "$@" $extra
