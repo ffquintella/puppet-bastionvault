@@ -1,0 +1,35 @@
+<%- | String[1]            $mount,
+      String               $config_words,
+      Boolean              $has_secret,
+      Stdlib::Absolutepath $secret_file,
+      String[1]            $role,
+      String[1]            $role_words,
+| -%>
+#!/bin/sh
+# Managed by Puppet — bastionvault module (bastionvault::oidc).
+# Enables the OIDC auth method at auth/<%= $mount %>/ and writes its provider
+# config and roles. Idempotent: safe to re-run after changing Hiera.
+#
+# Needs an authenticated token with permission on sys/auth and auth/<%= $mount %>/*:
+#   bvault login ...        # then:
+#   sudo <this script>      # (sudo keeps SUDO_USER, so your token file is used)
+set -eu
+
+bv() { /usr/local/bin/bvault "$@"; }
+
+if ! bv auth list -format=json 2>/dev/null | grep -q '"<%= $mount %>/"'; then
+  echo "enabling auth method oidc at <%= $mount %>/"
+  bv auth enable -path=<%= $mount %> oidc
+fi
+
+echo "writing auth/<%= $mount %>/config"
+<%- if $has_secret { -%>
+# Secret goes over stdin (oidc_client_secret=-), never on a command line.
+printf '%s' "$(cat <%= $secret_file %>)" | bv write auth/<%= $mount %>/config <%= $config_words %>
+<%- } else { -%>
+bv write auth/<%= $mount %>/config <%= $config_words %>
+<%- } -%>
+echo "writing auth/<%= $mount %>/role/<%= $role %>"
+bv write auth/<%= $mount %>/role/<%= $role %> <%= $role_words %>
+
+echo "done: bvault auth list; bvault read auth/<%= $mount %>/config"

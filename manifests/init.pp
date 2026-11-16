@@ -153,6 +153,32 @@
 # @param mcp_brokered_sessions_allowed_target_cidrs Destination allow-list.
 #   undef keeps the server default (RFC 1918 + `fc00::/7`); a list replaces
 #   that default and an empty list allows no destination.
+# @param oidc_enabled When true, declares `bastionvault::oidc`: it installs the
+#   operator helper `/srv/scripts/bastionvault/oidc-configure` (and the client
+#   secret file, root-only) that enables the OIDC auth method and writes its
+#   provider config and roles. Puppet never holds a vault token, so the helper
+#   is run once by an operator after `bvault login` (see README "OIDC login").
+# @param oidc_mount Mount path of the OIDC auth method (`auth/<oidc_mount>/`).
+# @param oidc_discovery_url IdP issuer URL; the server appends
+#   `/.well-known/openid-configuration`. Required when `oidc_enabled`.
+# @param oidc_client_id OAuth client id registered at the IdP. Required when
+#   `oidc_enabled`.
+# @param oidc_client_secret OAuth client secret (Sensitive, via eyaml). Written to
+#   `${config_dir}/oidc-client-secret` (root:root 0600) and piped to the CLI over
+#   stdin so it never appears in a process list. Omit for public/PKCE clients.
+# @param oidc_allowed_redirect_uris Redirect-URI whitelist; every entry must also
+#   be registered at the IdP.
+# @param oidc_scopes Scopes requested at the IdP.
+# @param oidc_role_name Name of the single role the module manages (also the
+#   provider `default_role`, used when a login names none).
+# @param oidc_role_policies Vault policies attached on login.
+# @param oidc_role_user_claim ID-token claim naming the principal in audit logs.
+# @param oidc_role_groups_claim Optional claim holding the user's group list.
+# @param oidc_role_bound_audiences Accepted `aud` values; defaults to the client id.
+# @param oidc_role_bound_claims Optional claim => [allowed values] map the ID token
+#   must satisfy (e.g. restrict to a group/domain). Sent as JSON.
+# @param oidc_role_claim_mappings Optional ID-token claim => token metadata key map.
+# @param oidc_role_token_ttl_secs Optional token TTL in seconds (default: server's).
 # @param hsm_backend HSM auto-unseal backend. `undef` (default) leaves the
 #   server on Shamir unseal (operator enters shares). `mock` uses the software
 #   mock HSM (dev/homolog only — no hardware protection; the server refuses it
@@ -389,6 +415,22 @@ class bastionvault (
   Boolean                                      $mcp_brokered_sessions_enabled              = false,
   Array[Enum['ssh', 'web', 'rdp']]             $mcp_brokered_sessions_protocols            = ['ssh'],
   Optional[Array[String[1]]]                   $mcp_brokered_sessions_allowed_target_cidrs = undef,
+
+  Boolean                                      $oidc_enabled       = false,
+  String[1]                                    $oidc_mount         = 'oidc',
+  Optional[Stdlib::HTTPSUrl]                   $oidc_discovery_url = undef,
+  Optional[String[1]]                          $oidc_client_id     = undef,
+  Optional[Variant[Sensitive[String[1]], String[1]]] $oidc_client_secret = undef,
+  Array[String[1]]                             $oidc_allowed_redirect_uris = [],
+  Array[String[1]]                             $oidc_scopes        = ['openid', 'profile', 'email'],
+  String[1]                                    $oidc_role_name     = 'default',
+  Array[String[1]]                             $oidc_role_policies = ['default'],
+  String[1]                                    $oidc_role_user_claim = 'email',
+  Optional[String[1]]                          $oidc_role_groups_claim = undef,
+  Optional[Array[String[1]]]                   $oidc_role_bound_audiences = undef,
+  Hash[String[1], Array[String[1]]]            $oidc_role_bound_claims = {},
+  Hash[String[1], String[1]]                   $oidc_role_claim_mappings = {},
+  Optional[Integer[0]]                         $oidc_role_token_ttl_secs = undef,
 
   # ── HSM auto-unseal (BastionVault v0.24.0+; both backends baked into the stock image) ──
   Optional[Enum['mock', 'yubihsm2']]           $hsm_backend             = undef,
@@ -897,6 +939,9 @@ class bastionvault (
   contain bastionvault::service
   contain bastionvault::cli
   contain bastionvault::scripts
+  if $oidc_enabled {
+    contain bastionvault::oidc
+  }
 
   Class['baseapp']
   -> Class['bastionvault::install']
@@ -908,4 +953,8 @@ class bastionvault (
   -> Class['bastionvault::service']
   -> Class['bastionvault::cli']
   -> Class['bastionvault::scripts']
+
+  if $oidc_enabled {
+    Class['bastionvault::scripts'] -> Class['bastionvault::oidc']
+  }
 }

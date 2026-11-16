@@ -387,6 +387,36 @@ needs the runtime switch `sys/mcp/config` `brokered_sessions_enabled = true`
 (sudo, off by default) and a `connect_allowed` grant on the agent's binding;
 this module manages neither.
 
+## OIDC login (SSO)
+
+Set `oidc_enabled` to install `/srv/scripts/bastionvault/oidc-configure`, a
+helper that enables the OIDC auth method and writes its provider config and one
+role. The OIDC method is runtime state in the vault (not a `config.hcl` key) and
+writing it needs a token, which this module never holds — so Puppet only
+renders the helper (and the client secret, root-only at
+`${config_dir}/oidc-client-secret`); an operator runs it once:
+
+```yaml
+bastionvault::oidc_enabled: true
+bastionvault::oidc_discovery_url: "https://idp.example.org/sso/oauth/<id>"
+bastionvault::oidc_client_id: "my-client-id"
+bastionvault::oidc_client_secret: ENC[PKCS7,...]   # eyaml, Sensitive
+bastionvault::oidc_allowed_redirect_uris:
+  - "https://bv.example.org:4200/v1/auth/oidc/callback"
+bastionvault::oidc_role_policies: ["default"]
+```
+
+```bash
+bvault login ...                                 # a token allowed on sys/auth and auth/oidc/*
+sudo /srv/scripts/bastionvault/oidc-configure    # idempotent; re-run after changing Hiera
+```
+
+The secret is piped to the CLI over stdin (`oidc_client_secret=-`), never put on
+a command line. Role knobs: `oidc_role_name`, `oidc_role_policies`,
+`oidc_role_user_claim`, `oidc_role_groups_claim`, `oidc_role_bound_audiences`
+(default: the client id), `oidc_role_bound_claims`, `oidc_role_claim_mappings`,
+`oidc_role_token_ttl_secs`. Every redirect URI must also be registered at the IdP.
+
 ## TLS material
 
 The module accepts cert/key material for **three** independent TLS endpoints:

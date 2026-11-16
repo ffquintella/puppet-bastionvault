@@ -505,6 +505,44 @@ if catalog_harness == :regent
       it { is_expected.to compile.and_raise_error(%r{cluster_raft_allow_aggressive_timeouts}) }
     end
 
+    context 'with oidc_enabled' do
+      let(:params) do
+        {
+          oidc_enabled:               true,
+          oidc_discovery_url:         'https://idp.example.test/sso/oauth/abc',
+          oidc_client_id:             'client-id-1',
+          oidc_client_secret:         'S3cret',
+          oidc_allowed_redirect_uris: ['https://bv1.example.test:4200/v1/auth/oidc/callback'],
+          oidc_role_policies:         ['default', 'reader'],
+          oidc_role_bound_claims:     { 'groups' => ['bv-admins'] },
+        }
+      end
+
+      it { is_expected.to compile }
+      it { is_expected.to contain_class('bastionvault::oidc') }
+
+      it 'stores the client secret root-only' do
+        is_expected.to contain_file('/srv/application-config/bastionvault/oidc-client-secret')
+          .with('owner' => 'root', 'mode' => '0600')
+      end
+
+      it 'renders the helper: enable, config (secret via stdin) and role' do
+        is_expected.to contain_file('/srv/scripts/bastionvault/oidc-configure')
+          .with_content(%r{bv auth enable -path=oidc oidc})
+          .with_content(%r{bv write auth/oidc/config .*oidc_discovery_url=https://idp\.example\.test/sso/oauth/abc})
+          .with_content(%r{oidc_client_secret=-})
+          .with_content(%r{default_role=default})
+          .with_content(%r{bv write auth/oidc/role/default bound_audiences=client-id-1 policies=default,reader user_claim=email})
+          .with_content(%r{bound_claims=})  # JSON body not asserted: regent's stdlib stub has no to_json
+      end
+    end
+
+    context 'with oidc_enabled but no client id' do
+      let(:params) { { oidc_enabled: true, oidc_discovery_url: 'https://idp.example.test/x' } }
+
+      it { is_expected.to compile.and_raise_error(%r{oidc_enabled requires}) }
+    end
+
     # NOTE: mode=ha is NOT exercised here. The $nodes parameter is typed
     # Array[Struct[{ id, raft_host => Stdlib::Host, ... }]]; regent's type
     # checker cannot validate that nested Struct/Stdlib::Host alias and
