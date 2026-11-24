@@ -44,6 +44,27 @@ class bastionvault::service {
       ],
     }
 
+    # Registry credentials for the rootless pull. podman reads
+    # ~/.config/containers/auth.json when no $XDG_RUNTIME_DIR auth file exists.
+    # Written before the Quadlet so the first start/restart can already pull.
+    if $bastionvault::registry_username != undef {
+      $_reg_pw = $bastionvault::registry_password ? {
+        Sensitive => $bastionvault::registry_password.unwrap,
+        default   => $bastionvault::registry_password,
+      }
+      $_reg_auth = base64('encode', "${bastionvault::registry_username}:${_reg_pw}", 'strict')
+
+      file { "${home}/.config/containers/auth.json":
+        ensure  => file,
+        owner   => $user,
+        group   => $group,
+        mode    => '0600',
+        content => Sensitive("{\"auths\":{\"${bastionvault::registry}\":{\"auth\":\"${_reg_auth}\"}}}\n"),
+        require => File["${home}/.config/containers"],
+        before  => [Exec['bastionvault-user-restart'], Exec['bastionvault-user-start']],
+      }
+    }
+
     file { $unit_path:
       ensure  => file,
       owner   => $user,

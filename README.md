@@ -58,6 +58,16 @@ class { 'bastionvault':
 }
 ```
 
+### Private registry login
+
+```yaml
+bastionvault::registry_username: svc-pull
+bastionvault::registry_password: ENC[PKCS7,...]   # eyaml, Sensitive
+```
+
+Writes `~bastionvault/.config/containers/auth.json` (0600) for `$registry` so the
+rootless service can pull. Both parameters must be set together.
+
 ## HA cluster (hiqlite Raft)
 
 ```puppet

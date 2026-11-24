@@ -329,6 +329,26 @@ if catalog_harness == :regent
       it { is_expected.to compile.and_raise_error(%r{only valid with}) }
     end
 
+    context 'with registry credentials (uid known)' do
+      let(:params) do
+        { uid: 2001, registry: 'repo.example.com:5000', registry_username: 'u', registry_password: 'p' }
+      end
+
+      it { is_expected.to compile }
+
+      # base64("u:p") == dTpw
+      it 'writes the podman auth file' do
+        is_expected.to contain_file('/var/lib/bastionvault/.config/containers/auth.json')
+          .with_mode('0600')
+      end
+    end
+
+    context 'with registry_username but no password' do
+      let(:params) { { registry_username: 'u' } }
+
+      it { is_expected.not_to compile }
+    end
+
     context 'with the yubihsm2 gateway service (uid known)' do
       let(:params) do
         {

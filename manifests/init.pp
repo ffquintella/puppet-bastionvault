@@ -9,6 +9,12 @@
 # @param image_account   Optional account/org path segment. Empty means none.
 # @param image_name      Image name. Defaults to `bastionvault`.
 # @param image_tag       Image tag (pinned).
+# @param registry_username Optional login for `$registry`. When set together with
+#   `registry_password`, the module writes a podman auth file for the service
+#   user (`~/.config/containers/auth.json`, 0600) so the rootless pull of a
+#   private image succeeds. Both or neither must be set.
+# @param registry_password Password/token for `registry_username` (Sensitive, via
+#   eyaml). Never rendered in diffs or logs.
 # @param listen_port     Host-side TCP port published for the API listener.
 # @param container_port  In-container API listener port.
 # @param listen_address  Bind address inside the container.
@@ -298,6 +304,8 @@ class bastionvault (
   String                                       $image_account   = '',
   String[1]                                    $image_name      = 'bastionvault',
   String[1]                                    $image_tag       = '0.3.2',
+  Optional[String[1]]                          $registry_username = undef,
+  Optional[Variant[Sensitive[String[1]], String[1]]] $registry_password = undef,
 
   Stdlib::Port                                 $listen_port     = 4200,
   Stdlib::Port                                 $container_port  = 8200,
@@ -507,6 +515,13 @@ class bastionvault (
   # image_account hygiene: no leading/trailing slashes.
   if $image_account != '' and $image_account =~ /\A\/|\/\z/ {
     fail("image_account must not start or end with '/': '${image_account}'")
+  }
+
+  # Registry credentials are all-or-nothing.
+  $_reg_user_set = $registry_username != undef
+  $_reg_pw_set   = $registry_password != undef
+  if $_reg_user_set != $_reg_pw_set {
+    fail('bastionvault: registry_username and registry_password must be set together.')
   }
 
   # Composed image reference.
