@@ -218,6 +218,27 @@ if catalog_harness == :regent
       end
     end
 
+    context 'with cli_tls_server_name (regent)' do
+      let(:params) { { cli_tls_server_name: 'localhost' } }
+
+      it 'renders the configured verify name behind the env override' do
+        is_expected.to contain_file(wrapper)
+          .with_content(%r{VAULT_TLS_SERVER_NAME:-"localhost"})
+      end
+    end
+
+    context 'without cli_tls_server_name (regent)' do
+      it 'renders an empty default so the wrapper falls back to the host FQDN' do
+        is_expected.to contain_file(wrapper)
+          .with_content(%r{VAULT_TLS_SERVER_NAME:-""})
+      end
+
+      it 'carries the failure hint' do
+        is_expected.to contain_file(wrapper)
+          .with_content(%r{VAULT_TLS_SERVER_NAME=<a name on the cert> bvault})
+      end
+    end
+
     context 'with no HSM (default)' do
       it 'renders no hsm block' do
         is_expected.to contain_file(config).without_content(%r{hsm "})

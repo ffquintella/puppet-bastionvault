@@ -9,7 +9,8 @@
 # The wrapper exists because the bvault binary does NOT read VAULT_ADDR /
 # VAULT_TLS_SERVER_NAME from the environment (its help text mentions them,
 # but no env binding exists) — the address must arrive as an --address
-# flag. /usr/local/bin precedes /usr/bin on the default EL PATH, so the
+# flag. Newer binaries do read VAULT_TLS_SERVER_NAME; older ones ignore it,
+# so the wrapper keeps injecting --tls-server-name either way. /usr/local/bin precedes /usr/bin on the default EL PATH, so the
 # wrapper shadows the packaged binary transparently.
 #
 # Do NOT include this class on a node that also includes `bastionvault`
@@ -43,7 +44,10 @@
 #   paths, so the cert works even without the wrapper.
 # @param tls_server_name Optional SNI/verification name to inject as
 #   --tls-server-name, for when the connection address differs from the
-#   name in the server cert's SAN.
+#   name in the server cert's SAN. Default undef (no injection: the name is
+#   taken from the address, which must then be a SAN on the cert). Must be a
+#   name present in the cert's SAN list. `VAULT_TLS_SERVER_NAME` in the
+#   caller's environment overrides it; an explicit flag overrides both.
 # @param manage_wrapper Manage the /usr/local/bin wrapper. Without it the
 #   operator must pass --address on every call (or export VAULT_CACERT
 #   etc. themselves).

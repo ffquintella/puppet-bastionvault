@@ -10,6 +10,7 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 PASSTHROUGH=${PASSTHROUGH:-}
+TLS_NAME=${TLS_NAME:-}
 
 # shellcheck disable=SC2016  # the EPP markers are literal text for sed
 render() {
@@ -19,6 +20,7 @@ render() {
       -e 's|<%= \$service_port %>|4200|g' \
       -e 's|<%= \$user %>|bastionvault|g' \
       -e "s|<%= \$passthrough_env %>|$PASSTHROUGH|g" \
+      -e "s|<%= \$tls_server_name %>|$TLS_NAME|g" \
       -e 's|<%= \$hsm_out_dir %>|/var/lib/bastionvault/hsm-out|g' \
       -e "s|/usr/bin/sudo|$work/sudo|g" "$tpl" > "$work/bvault"
   chmod +x "$work/bvault"
@@ -27,6 +29,7 @@ render() {
 cat > "$work/sudo" <<'STUB'
 #!/bin/sh
 for a in "$@"; do printf '%s\n' "$a"; done
+exit "${STUB_RC:-0}"
 STUB
 chmod +x "$work/sudo"
 
@@ -147,6 +150,57 @@ sys.exit(os.waitstatus_to_exitcode(st))' "$@"
 else
   printf 'skip - tty cases need python3\n'
 fi
+
+# 9. verify-name precedence: flag > $VAULT_TLS_SERVER_NAME > Puppet default > FQDN
+# (hostname is stubbed so the FQDN fallback is deterministic)
+cat > "$work/hostname" <<'STUB'
+#!/bin/sh
+echo node.fqdn.test
+STUB
+chmod +x "$work/hostname"
+sni_lines() { printf '%s\n' "$out" | grep '^--tls-server-name='; }
+runh() { render; out=$(env -u VAULT_TLS_SERVER_NAME PATH="$work:$PATH" "$@" 2>&1); }
+
+TLS_NAME=''
+runh "$work/bvault" operator hsm status
+c9a() { [ "$(sni_lines)" = '--tls-server-name=node.fqdn.test' ]; }
+t 'sni: no env, no Puppet value -> host FQDN' c9a
+
+TLS_NAME='puppet.test'
+runh "$work/bvault" operator hsm status
+c9b() { [ "$(sni_lines)" = '--tls-server-name=puppet.test' ]; }
+t 'sni: Puppet value beats the FQDN' c9b
+
+render
+out=$(VAULT_TLS_SERVER_NAME=env.test PATH="$work:$PATH" "$work/bvault" operator hsm status 2>&1)
+c9c() { [ "$(sni_lines)" = '--tls-server-name=env.test' ]; }
+t 'sni: VAULT_TLS_SERVER_NAME beats the Puppet value and is injected as the flag' c9c
+
+out=$(VAULT_TLS_SERVER_NAME=env.test PATH="$work:$PATH" "$work/bvault" operator hsm status --tls-server-name=flag.test 2>&1)
+c9d() { [ "$(sni_lines)" = '--tls-server-name=flag.test' ]; }
+t 'sni: explicit --tls-server-name beats the env (nothing injected)' c9d
+out=$(VAULT_TLS_SERVER_NAME=env.test PATH="$work:$PATH" "$work/bvault" operator hsm status --tls-server-name flag.test 2>&1)
+c9e() { ! has 'tls-server-name=' && has '^flag.test$'; }
+t 'sni: explicit "--tls-server-name VALUE" form is not doubled' c9e
+TLS_NAME=''
+
+# 10. stderr hint only on failure, exit code and stdout preserved
+hint_re="verified the server cert against"
+render
+out=$(PATH="$work:$PATH" "$work/bvault" operator hsm status 2>"$work/err"); rc=$?
+c10a() { [ "$rc" -eq 0 ] && ! grep -q "$hint_re" "$work/err"; }
+t 'hint: absent on success' c10a
+out=$(STUB_RC=3 PATH="$work:$PATH" "$work/bvault" operator hsm status 2>"$work/err"); rc=$?
+c10b() { [ "$rc" -eq 3 ] && grep -q "$hint_re 'node.fqdn.test'" "$work/err" \
+  && grep -q 'VAULT_TLS_SERVER_NAME=<a name on the cert> bvault' "$work/err"; }
+t 'hint: on failure names the injected name and the override; exit code kept' c10b
+c10c() { has '^--address=' && ! printf '%s\n' "$out" | grep -q "$hint_re"; }
+t 'hint: goes to stderr only, stdout unchanged' c10c
+out=$(STUB_RC=3 PATH="$work:$PATH" "$work/bvault" operator hsm status --tls-server-name=x 2>"$work/err"); rc=$?
+c10d() { [ "$rc" -eq 3 ] && ! grep -q "$hint_re" "$work/err"; }
+t 'hint: absent when the operator passed the flag (nothing injected)' c10d
+out=$(STUB_RC=3 PATH="$work:$PATH" "$work/bvault" --version 2>"$work/err"); rc=$?
+t 'hint: absent when nothing was injected (--version)' c10d
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

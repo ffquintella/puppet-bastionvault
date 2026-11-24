@@ -41,6 +41,13 @@
 #   NAME` + `sudo --preserve-env=NAME`), so values never appear in argv, logs
 #   or Puppet facts. VAULT_TOKEN/BVAULT_TOKEN are always forwarded this way.
 #   Default: none.
+# @param cli_tls_server_name Name the `bvault` wrapper passes as
+#   `--tls-server-name` (the name the server certificate is verified against;
+#   the wrapper connects to https://127.0.0.1). Default (undef): the host FQDN,
+#   which therefore MUST be a SAN on the serving certificate. A node whose cert
+#   lacks the FQDN must set this to a SAN the cert does have (e.g. `localhost`)
+#   or reissue the cert with the FQDN. Operators can override per call with
+#   `VAULT_TLS_SERVER_NAME=<name> bvault ...` or `--tls-server-name`.
 # @param hsm_out_dir Host directory bind-mounted into the container at
 #   /hsm-out (owner `user`, mode 0750). `bvault operator hsm provision --out
 #   /hsm-out/hsm-a.json` writes the attestation bundle (JSON, no secrets)
@@ -59,8 +66,9 @@
 #   module runs. NOT for production — use a real CA-issued cert in prod.
 # @param tls_self_signed_cn CN for the self-signed cert. Defaults to the FQDN.
 # @param tls_self_signed_san Array of SAN entries (`DNS:` or `IP:` prefixed)
-#   for the self-signed cert. Defaults to DNS:<fqdn>, DNS:<hostname>, plus the
-#   primary IPv4 if known.
+#   for the self-signed cert. Defaults to DNS:<fqdn>, DNS:<hostname>,
+#   DNS:localhost, IP:127.0.0.1, plus the primary IPv4 if known. Certs already
+#   generated are not reissued (the exec is `creates`-guarded).
 # @param tls_self_signed_days Validity period in days for the self-signed cert.
 # @param user            Non-root system user the container runs under.
 # @param group           Group for $user.
@@ -351,6 +359,7 @@ class bastionvault (
 
   Stdlib::Absolutepath                         $hsm_out_dir         = '/var/lib/bastionvault/hsm-out',
   Array[Pattern[/\A[A-Za-z_][A-Za-z0-9_]*\z/]]  $cli_passthrough_env = [],
+  Optional[String[1]]                          $cli_tls_server_name = undef,
 
   String[1]                                    $user            = 'bastionvault',
   String[1]                                    $group           = 'bastionvault',

@@ -305,6 +305,8 @@ class bastionvault::config {
       $_default_san = [
         "DNS:${facts['networking']['fqdn']}",
         "DNS:${facts['networking']['hostname']}",
+        'DNS:localhost',
+        'IP:127.0.0.1',
       ] + ($facts['networking']['ip'] ? {
           undef   => [],
           default => ["IP:${facts['networking']['ip']}"],

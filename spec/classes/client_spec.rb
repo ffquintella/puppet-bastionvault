@@ -37,8 +37,12 @@ if catalog_harness == :regent
       it { is_expected.to compile }
       it { is_expected.to contain_file(wrapper) }
 
-      it 'execs the packaged binary' do
-        is_expected.to contain_file(wrapper).with_content(%r{exec /usr/bin/bvault "\$@" \$extra})
+      it 'runs the packaged binary and keeps its exit status' do
+        is_expected.to contain_file(wrapper).with_content(%r{/usr/bin/bvault "\$@" \$extra\nrc=\$\?})
+      end
+
+      it 'carries the failure hint for an injected verify name' do
+        is_expected.to contain_file(wrapper).with_content(%r{VAULT_TLS_SERVER_NAME=<a name on the cert> bvault})
       end
 
       it 'renders an empty address default (no server_url)' do
@@ -112,8 +116,8 @@ else
               .with_owner('root').with_group('root').with_mode('0755')
           }
 
-          it 'execs the packaged binary' do
-            is_expected.to contain_file(wrapper).with_content(%r{exec /usr/bin/bvault "\$@" \$extra})
+          it 'runs the packaged binary and keeps its exit status' do
+            is_expected.to contain_file(wrapper).with_content(%r{/usr/bin/bvault "\$@" \$extra\nrc=\$\?})
           end
 
           it 'manages no trust anchor without CA input' do

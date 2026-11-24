@@ -1,6 +1,7 @@
 <%- | String[1]    $user,
       Stdlib::Port $service_port,
       String       $passthrough_env,
+      String       $tls_server_name,
       Stdlib::Absolutepath $hsm_out_dir,
 | -%>
 #!/bin/sh
@@ -26,6 +27,13 @@
 #     against the SAN while the connection still lands on loopback
 #     (requires bvault >= 0.8.3 — older CLIs accept the flag but never
 #     plumb it through, falling back to the SAN-vs-loopback error).
+#     Name precedence: explicit --tls-server-name flag > $VAULT_TLS_SERVER_NAME
+#     in the caller's environment > bastionvault::cli_tls_server_name > the
+#     host FQDN. The wrapper always turns the winning name into the flag:
+#     newer binaries also read VAULT_TLS_SERVER_NAME themselves, but the
+#     variable is not forwarded into the container, and older binaries
+#     ignore it. The default needs the FQDN as a SAN on the serving cert;
+#     when it is not, set cli_tls_server_name (e.g. 'localhost').
 #   * Token persistence: bvault >= 0.8.6 writes the token issued by
 #     `bvault login` to $BVAULT_TOKEN_FILE on success and reads it back
 #     on subsequent invocations when --client-token / VAULT_TOKEN are
@@ -150,16 +158,20 @@ fi
 unset _walk_depth _walk_group _walk_skip _arg
 [ -n "${BVAULT_ADDR:-}${VAULT_ADDR:-}" ]                                 && inject_addr=0
 [ -n "${VAULT_CACERT:-}${VAULT_CAPATH:-}${VAULT_SKIP_VERIFY:-}" ]        && inject_ca=0
-[ -n "${VAULT_TLS_SERVER_NAME:-}" ]                                      && inject_sni=0
 
 : "<%= $service_port %>"
 
 extra=
 [ "$inject_addr" = 1 ] && extra="$extra --address=https://127.0.0.1:<%= $service_port %>"
 [ "$inject_ca"   = 1 ] && extra="$extra --ca-cert=/etc/bvault/tls/server.crt"
+injected_sni=
 if [ "$inject_sni" = 1 ] && [ "$inject_addr" = 1 ]; then
-  fqdn=$(hostname -f 2>/dev/null || hostname 2>/dev/null)
-  [ -n "$fqdn" ] && extra="$extra --tls-server-name=$fqdn"
+  sni=${VAULT_TLS_SERVER_NAME:-"<%= $tls_server_name %>"}
+  [ -n "$sni" ] || sni=$(hostname -f 2>/dev/null || hostname 2>/dev/null)
+  if [ -n "$sni" ]; then
+    extra="$extra --tls-server-name=$sni"
+    injected_sni=$sni
+  fi
 fi
 
 # Derive the per-host-user token-helper path. SUDO_USER is set by sudo
@@ -199,4 +211,11 @@ sudo_env=
 # caller's cwd (e.g. /root) and the rootless user fails to chdir into it.
 cd / || exit 1
 # shellcheck disable=SC2086  # $extra, $podman_env and $sudo_env are intentionally word-split
-exec /usr/bin/sudo -n $sudo_env -u <%= $user %> /usr/bin/podman exec $STDIN_FLAG $TTY_FLAG $podman_env bastionvault bvault "$@" $extra
+/usr/bin/sudo -n $sudo_env -u <%= $user %> /usr/bin/podman exec $STDIN_FLAG $TTY_FLAG $podman_env bastionvault bvault "$@" $extra
+rc=$?
+# One stderr line when we injected the verify name and the command failed, so
+# a certificate-name error is self-explaining. Exit code and stdout untouched.
+if [ "$rc" -ne 0 ] && [ -n "$injected_sni" ]; then
+  echo "bvault: wrapper verified the server cert against '$injected_sni'; if the error above is a certificate name mismatch, retry with VAULT_TLS_SERVER_NAME=<a name on the cert> bvault ..." >&2
+fi
+exit "$rc"

@@ -594,6 +594,46 @@ The module decodes the base64, writes the PEM files under
 `$tls_dir` with the right ownership and `0600` / `0644` modes, and points
 `config.hcl` at the in-container paths automatically.
 
+### Verify name for the server-node `bvault` wrapper
+
+On a server node the wrapper connects to `https://127.0.0.1:<port>` and passes
+`--tls-server-name=<name>` so rustls checks the certificate against `<name>`.
+Precedence: `--tls-server-name` flag > `VAULT_TLS_SERVER_NAME` > Hiera
+`bastionvault::cli_tls_server_name` > the host FQDN. The default (FQDN)
+therefore **requires the FQDN to be a SAN on the server certificate**. A node
+whose certificate lacks it must set `cli_tls_server_name` to a SAN it does
+have, for example:
+
+```yaml
+bastionvault::cli_tls_server_name: localhost
+```
+
+The module's own self-signed certificate lists the FQDN, short hostname,
+`localhost`, `127.0.0.1` and the primary IPv4. A certificate supplied through
+`tls_cert_*` is outside the module's control: its SAN list comes from whoever
+issued it (e.g. the vault PKI role).
+
+### Troubleshooting: `NotValidForName`
+
+```
+InvalidCertificate(NotValidForNameContext { expected: DnsName("node.example.org"),
+  presented: ["localhost", "NODE", IpAddress(10.0.0.5)] })
+```
+
+The wrapper verified the certificate against a name the certificate does not
+carry (`expected`). The wrapper prints a hint on stderr naming that name when a
+command fails. Fix it one of two ways:
+
+1. **Reissue the server certificate** with the FQDN (and `localhost` /
+   `127.0.0.1`) in its SAN list. This is the proper fix.
+2. **Use a name the certificate has**: set `cli_tls_server_name` (server
+   nodes) or `tls_server_name` (`bastionvault::client`) in Hiera to one of the
+   `presented` names, or for a single call
+   `VAULT_TLS_SERVER_NAME=localhost bvault status`.
+
+Do not work around it with `VAULT_SKIP_VERIFY` / `--tls-skip-verify`: that
+disables certificate verification entirely.
+
 ## Client-only install (`bastionvault::client`)
 
 For EL hosts that only need the `bvault` CLI to talk to a remote BastionVault
@@ -610,9 +650,10 @@ instead. The class does three things:
    `bvault status` "just works" for every user on the host.
 
 The wrapper is what makes configuration stick: the bvault binary does
-**not** read `VAULT_ADDR` / `VAULT_TLS_SERVER_NAME` from the environment
-(its help text mentions them, but no env binding exists), so the address
-must arrive as an `--address` flag on every call. `/usr/local/bin`
+**not** read `VAULT_ADDR` from the environment, and older releases ignore
+`VAULT_TLS_SERVER_NAME` too (newer releases bind it, like `VAULT_CACERT`),
+so the address and name arrive as `--address` / `--tls-server-name` flags
+on every call. The wrapper handles both binary generations. `/usr/local/bin`
 precedes `/usr/bin` on the default EL PATH, so the wrapper shadows the
 packaged binary transparently; `bvault --version`, `bvault --help`, and
 group-only invocations (`bvault operator`) pass through untouched.
@@ -694,7 +735,7 @@ setting, first match wins:
 |---------------------|------------------------------------------------|----------------------------------------------|--------------------------|------------------------------------------|
 | server address      | `--address`                                    | `BVAULT_ADDR`, `VAULT_ADDR`                  | `$server_url`            | binary default (`https://127.0.0.1:8200`) |
 | trust anchor        | `--ca-cert` / `--ca-path` / `--tls-skip-verify`| `VAULT_CACERT` / `VAULT_CAPATH` / `VAULT_SKIP_VERIFY` | `$ca_cert_path` (if the file exists) | CLI auto-discovery (`~/.bvault/ca.pem`, `/etc/bvault/ca.pem`) |
-| SNI / verify name   | `--tls-server-name`                            | `VAULT_TLS_SERVER_NAME`                      | `$tls_server_name`       | hostname from the address                |
+| SNI / verify name   | `--tls-server-name`                            | `VAULT_TLS_SERVER_NAME` (wrapper injects it as the flag; newer binaries also read it natively) | `$tls_server_name` (server nodes: `$cli_tls_server_name`, default the host FQDN) | hostname from the address                |
 
 Login tokens need no plumbing: `bvault login` persists the token to
 `~/.vault-token` (or `$BVAULT_TOKEN_FILE`) per invoking user, and later
@@ -725,7 +766,7 @@ bvault secrets list      # any CLI command now targets the configured server
 | `ca_cert_base64`   | `undef`                  | Base64-encoded PEM (single Hiera-friendly line).                   |
 | `ca_cert_source`   | `undef`                  | Puppet file `source` URI for the cert.                             |
 | `ca_cert_path`     | `'/etc/bvault/ca.pem'`   | Where the trust anchor is written.                                 |
-| `tls_server_name`  | `undef`                  | SNI/verification name when the address differs from the cert SAN.  |
+| `tls_server_name`  | `undef`                  | SNI/verification name when the address differs from the cert SAN. Must be a SAN on the server cert. |
 | `manage_wrapper`   | `true`                   | Manage the `/usr/local/bin` wrapper.                               |
 | `wrapper_path`     | `'/usr/local/bin/bvault'`| Wrapper location.                                                  |
 | `binary_path`      | `'/usr/bin/bvault'`      | Packaged binary the wrapper execs.                                 |

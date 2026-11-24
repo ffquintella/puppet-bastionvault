@@ -7,10 +7,10 @@
 # Managed by Puppet — bastionvault module (client-only install).
 # Thin wrapper around the packaged `bvault` binary that injects the
 # puppet-configured server address / trust anchor / SNI name, because the
-# binary itself does NOT read VAULT_ADDR or VAULT_TLS_SERVER_NAME from the
-# environment (the clap help text mentions them, but no env binding exists;
-# only VAULT_CACERT / VAULT_CAPATH / VAULT_SKIP_VERIFY / VAULT_TOKEN are
-# real env vars). This wrapper makes them effective:
+# binary does NOT read VAULT_ADDR from the environment, and older releases
+# ignore VAULT_TLS_SERVER_NAME too (newer ones bind it; VAULT_CACERT /
+# VAULT_CAPATH / VAULT_SKIP_VERIFY / VAULT_TOKEN are real env vars). This
+# wrapper makes them effective on both old and new binaries:
 #
 #   * --address: explicit flag wins, then $BVAULT_ADDR / $VAULT_ADDR from
 #     the environment, then the puppet-configured server URL.
@@ -98,8 +98,10 @@ unset _walk_depth _walk_group _walk_skip _arg
 # would override the operator's env, which is backwards).
 [ -n "${VAULT_CACERT:-}${VAULT_CAPATH:-}${VAULT_SKIP_VERIFY:-}" ] && inject_ca=0
 
-# Environment beats the puppet default for address and SNI (the binary
-# ignores these vars, so the wrapper is what makes them work).
+# Environment beats the puppet default for address and SNI (older binaries
+# ignore these vars, so the wrapper is what makes them work). The SNI is still
+# injected as a flag: that works on every binary and the explicit-flag scan
+# above keeps a command-line --tls-server-name on top.
 addr=${BVAULT_ADDR:-${VAULT_ADDR:-"<%= $server_url %>"}}
 sni=${VAULT_TLS_SERVER_NAME:-"<%= $tls_server_name %>"}
 ca_file='<%= $ca_cert_path %>'
@@ -110,4 +112,11 @@ extra=
 [ "$inject_sni"  = 1 ] && [ -n "$sni" ]     && extra="$extra --tls-server-name=$sni"
 
 # shellcheck disable=SC2086  # $extra is intentionally word-split
-exec <%= $binary_path %> "$@" $extra
+<%= $binary_path %> "$@" $extra
+rc=$?
+# One stderr line when we injected the verify name and the command failed, so
+# a certificate-name error is self-explaining. Exit code and stdout untouched.
+if [ "$rc" -ne 0 ] && [ "$inject_sni" = 1 ] && [ -n "$sni" ]; then
+  echo "bvault: wrapper verified the server cert against '$sni'; if the error above is a certificate name mismatch, retry with VAULT_TLS_SERVER_NAME=<a name on the cert> bvault ..." >&2
+fi
+exit "$rc"
